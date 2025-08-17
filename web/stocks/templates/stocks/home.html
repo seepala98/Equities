@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Stock Scraper</title>
+  </head>
+  <body>
+    <h1>Fetch stock data</h1>
+    {% if message %}
+      <p><strong>{{ message }}</strong></p>
+    {% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <label>Symbol: <input type="text" name="symbol" required /></label><br />
+      <p>The URL will be constructed automatically for Yahoo Finance.</p>
+      <button type="submit">Fetch</button>
+    </form>
+
+    <h2>Latest records</h2>
+    <ul>
+      {% for item in latest %}
+        <li>{{ item.symbol }} — {{ item.date }} — {{ item.close_price }} — {{ item.volume }}</li>
+      {% empty %}
+        <li>No records yet</li>
+      {% endfor %}
+    </ul>
+  </body>
+</html>

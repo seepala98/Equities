@@ -1,0 +1,5 @@
+# minimal lock placeholder
+Django==4.2.12
+psycopg2-binary==2.9.11
+selenium==4.15.0
+requests==2.31.0

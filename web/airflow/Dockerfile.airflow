@@ -1,0 +1,21 @@
+FROM apache/airflow:2.6.3
+
+USER root
+
+# Install docker CLI so DockerOperator can use it via the host socket
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends docker.io ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install the Docker provider and python docker SDK
+USER airflow
+RUN pip install --no-cache-dir 'apache-airflow-providers-docker' docker
+
+# Install project requirements so Django and scraper code can run inside Airflow
+COPY airflow/requirements-airflow.txt /tmp/requirements-airflow.txt
+USER airflow
+RUN python -m pip install --upgrade pip && python -m pip install -r /tmp/requirements-airflow.txt
+USER root
+COPY airflow /opt/airflow/airflow_src
+RUN chown -R airflow: /opt/airflow/airflow_src
+USER airflow
