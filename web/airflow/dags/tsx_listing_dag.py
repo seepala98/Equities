@@ -14,9 +14,21 @@ DEFAULT_ARGS = {
 # Letters A-Z and the numeric bucket '0-9' (the TMX directory uses '0-9' as a single option)
 LETTERS = [chr(c) for c in range(ord('A'), ord('Z') + 1)] + ['0-9']
 EXCHANGES = ['TSX', 'TSXV']
+# Add CBOE and CSE as separate sources
+EXCHANGES_EXTRA = ['CBOE', 'CSE']
 # Status buckets we support. 'listed' has alphabet filters; 'delisted' and 'suspended' do not.
 STATUSES = ['listed', 'delisted', 'suspended']
 
+
+def create_cse_group(dag):
+    """Create the CSE task group."""
+    with TaskGroup(group_id='CSE_group', dag=dag) as group:
+        PythonOperator(
+            task_id='cse_listings',
+            python_callable=lambda **kwargs: importlib.import_module('cse_handler').process_cse_listings(**kwargs),
+            dag=dag
+        )
+    return group
 
 def _summarize(**context):
     # Collect xcoms from all per-letter tasks and parse numbers like 'Found 131 entries'
@@ -114,6 +126,55 @@ with DAG(
                         )
 
         groups.append(tg)
+
+    # Add a separate TaskGroup for CBOE which uses the CSV download. This mirrors the
+    # other groups but calls the scraper's CBOE CSV function which returns a simple
+    # "Found N entries" string.
+    with TaskGroup(group_id='cboe_group') as cboe_tg:
+        # import the scraper module by path like other tasks
+        def _call_cboe():
+            dag_pkg_dir = Path(__file__).resolve().parents[1]
+            candidate = dag_pkg_dir / 'scraper_no_django.py'
+            if not candidate.exists():
+                candidate = Path(__file__).resolve().parents[2] / 'scraper_no_django.py'
+            spec = importlib.util.spec_from_file_location('scraper_no_django', str(candidate))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            if hasattr(module, 'run_scrape_cboe'):
+                return module.run_scrape_cboe('CBOE')
+            raise RuntimeError('scraper_no_django does not expose run_scrape_cboe')
+
+        PythonOperator(
+            task_id='cboe_fetch_csv',
+            python_callable=_call_cboe,
+            retries=2,
+            retry_delay=timedelta(minutes=5),
+            provide_context=True,
+        )
+
+    groups.append(cboe_tg)
+
+    # CSE group (XLSX export)
+    with TaskGroup(group_id='cse_group') as cse_tg:
+        def _call_cse(**context):
+            import sys
+            from pathlib import Path
+            # Add the dags directory to Python path
+            dags_dir = Path(__file__).resolve().parent
+            if str(dags_dir) not in sys.path:
+                sys.path.append(str(dags_dir))
+            from cse_handler import process_cse_listings
+            return process_cse_listings(**context)
+
+        PythonOperator(
+            task_id='cse_fetch_xlsx',
+            python_callable=_call_cse,
+            retries=3,
+            retry_delay=timedelta(minutes=2),
+            provide_context=True,
+        )
+
+    groups.append(cse_tg)
 
     summarize = PythonOperator(
         task_id='summarize_results',

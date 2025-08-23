@@ -2,10 +2,62 @@ FROM apache/airflow:2.6.3
 
 USER root
 
-# Install docker CLI so DockerOperator can use it via the host socket
+# Install docker CLI and Chrome dependencies
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends docker.io ca-certificates curl \
+    && apt-get install -y --no-install-recommends \
+        docker.io \
+        ca-certificates \
+        curl \
+        xvfb \
+        chromium \
+        chromium-driver \
+        fonts-liberation \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libatk1.0-0 \
+        libatspi2.0-0 \
+        libcups2 \
+        libdbus-1-3 \
+        libdrm2 \
+        libgbm1 \
+        libgtk-3-0 \
+        libnspr4 \
+        libnss3 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxkbcommon0 \
+        libxrandr2 \
+        xdg-utils \
+        wget \
+        unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# Switch to root to set up Chrome and permissions
+USER root
+
+
+# Create necessary directories and copy chromedriver to writable location
+RUN mkdir -p /opt/chrome/driver /opt/airflow/data/cse/downloads /home/airflow/.config/chromium && \
+    cp /usr/bin/chromedriver /opt/chrome/driver/chromedriver && \
+    chmod 777 /opt/chrome/driver/chromedriver && \
+    chown -R airflow:root /opt/chrome && \
+    chown -R airflow:root /home/airflow/.config && \
+    chown -R airflow:root /opt/airflow/data
+
+# Set Chrome environment variables
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROMIUM_PATH=/usr/bin/chromium
+ENV CHROMEDRIVER_PATH=/opt/chrome/driver/chromedriver
+ENV PATH="/usr/lib/chromium:${PATH}"
+
+# Switch back to airflow user
+USER airflow
+
+# Set up Chrome environment variables
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROMIUM_PATH=/usr/bin/chromium
+ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 
 # Install the Docker provider and python docker SDK
 USER airflow
