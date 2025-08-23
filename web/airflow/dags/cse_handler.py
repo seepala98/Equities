@@ -28,9 +28,9 @@ def process_cse_listings(**context):
         # Connect to PostgreSQL
         conn = psycopg2.connect(
             host="db",  # Docker service name
-            database="postgres",
-            user="postgres",
-            password="postgres"
+            database="stockdb",
+            user="stockuser",
+            password="stockpass"
         )
         
         try:
@@ -72,7 +72,7 @@ def process_cse_listings(**context):
         
         # Save to a dated JSON file for backup
         date_str = datetime.now().strftime('%Y%m%d')
-        output_dir = Path(__file__).parent.parent / 'data' / 'cse'
+        output_dir = Path('/opt/airflow/data/cse')
         output_dir.mkdir(parents=True, exist_ok=True)
         
         output_file = output_dir / f'cse_listings_{date_str}.json'

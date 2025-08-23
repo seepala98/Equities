@@ -3,7 +3,7 @@
 This script uses undetected-chromedriver to access the CSE website and download
 their XL        # Use environment variables for paths
         chrome_binary = os.getenv('CHROME_BIN', '/usr/bin/chromium')
-        chromedriver_path = os.getenv('CHROMEDRIVER_PATH', '/usr/bin/chromedriver')
+        chromedriver_path = os.getenv('CHROMEDRIVER_PATH', '/opt/chrome/driver/chromedriver')
         
         options.binary_location = chrome_binary
         
@@ -59,33 +59,65 @@ def wait_and_find_element(driver, by, selector, timeout=10):
         print(f'Error finding element {selector}: {e}')
         return None
 
-def wait_for_download(directory, timeout=60):
+def wait_for_download(directory, timeout=90):
     """Wait for an XLSX file to appear in the specified directory and be fully downloaded."""
     start_time = time.time()
-    initial_files = set(Path(directory).glob('*.xlsx'))
-    temp_pattern = '*.xlsx.crdownload'  # Chrome temporary download pattern
+    directory_path = Path(directory)
+    
+    print(f"Waiting for download in: {directory_path}")
+    print(f"Directory exists: {directory_path.exists()}")
+    print(f"Directory permissions: {oct(directory_path.stat().st_mode)[-3:] if directory_path.exists() else 'N/A'}")
+    
+    # Get files with their modification times BEFORE download starts
+    initial_files = {}
+    for f in directory_path.glob('*.xlsx'):
+        initial_files[f.name] = f.stat().st_mtime
+    print(f"Initial files: {list(initial_files.keys())}")
+    
+    temp_patterns = ['*.xlsx.crdownload', '*.xlsx.part', '*.xlsx.tmp']
     
     while time.time() - start_time < timeout:
-        # Check for both complete and in-progress downloads
-        current_files = set(Path(directory).glob('*.xlsx'))
-        temp_files = set(Path(directory).glob(temp_pattern))
+        elapsed = int(time.time() - start_time)
+        
+        # Check for all types of temporary files
+        temp_files = set()
+        for pattern in temp_patterns:
+            temp_files.update(directory_path.glob(pattern))
+            
+        current_files = set(directory_path.glob('*.xlsx'))
+        all_files = set(directory_path.glob('*'))
+        
+        if elapsed % 15 == 0:  # Log every 15 seconds
+            print(f"[{elapsed}s] Temp files: {[f.name for f in temp_files]}")
+            print(f"[{elapsed}s] XLSX files: {[f.name for f in current_files]}")
+            print(f"[{elapsed}s] All files: {[f.name for f in all_files]}")
         
         # First, wait for any temporary downloads to complete
         if temp_files:
-            print("Download in progress...")
-            time.sleep(2)
+            print(f"Download in progress: {[f.name for f in temp_files]}")
+            time.sleep(3)
             continue
             
-        # Then look for new completed files
-        new_files = current_files - initial_files
-        if new_files:
-            downloaded_file = list(new_files)[0]
-            # Wait a bit to ensure file is completely written
-            time.sleep(2)
-            return downloaded_file
+        # Look for new files or files with newer modification times
+        for xlsx_file in current_files:
+            file_mtime = xlsx_file.stat().st_mtime
+            filename = xlsx_file.name
             
-        time.sleep(1)
+            # Check if this is a completely new file
+            if filename not in initial_files:
+                print(f"Found new file: {filename}")
+                time.sleep(3)  # Wait to ensure file is completely written
+                return xlsx_file
+                
+            # Check if this is an existing file but with newer modification time (re-download)
+            elif file_mtime > initial_files[filename] + 5:  # 5 second buffer
+                print(f"Found updated file: {filename} (mtime changed)")
+                time.sleep(3)  # Wait to ensure file is completely written
+                return xlsx_file
+            
+        time.sleep(2)
         
+    print(f"Download timeout after {timeout}s")
     return None
 
 def extract_cse_listings():
@@ -116,17 +148,27 @@ def extract_cse_listings():
     
     # Allow downloads and popups
     options.add_argument('--disable-popup-blocking')
+    options.add_argument(f'--download-directory={str(download_dir)}')
+    options.add_argument('--enable-features=NetworkService')
+    options.add_argument('--disable-features=VizDisplayCompositor')
+    
     prefs = {
         'download.default_directory': str(download_dir),
         'download.prompt_for_download': False,
         'download.directory_upgrade': True,
         'safebrowsing.enabled': False,
+        'safebrowsing_for_trusted_sources_enabled': False,
+        'safebrowsing.disable_download_protection': True,
         'profile.default_content_settings.popups': 0,
         'profile.content_settings.exceptions.automatic_downloads.*.setting': 1,
-        'safebrowsing.disable_download_protection': True,
+        'profile.managed_default_content_settings.images': 2,
         'plugins.always_open_pdf_externally': True,
     }
     options.add_experimental_option('prefs', prefs)
+    
+    # Ensure download directory has proper permissions
+    import os
+    os.chmod(download_dir, 0o777)
     
     # Additional ChromeDriver settings
     options.add_argument('--remote-debugging-port=9222')
@@ -284,7 +326,17 @@ def extract_cse_listings():
                                 driver.switch_to.window(original_window)
                             
                             time.sleep(10)  # Extended wait for download to start
+                            
+                            # Try sophisticated detection first
                             xlsx_file = wait_for_download(str(download_dir))
+                            
+                            # If sophisticated detection fails, just use the most recent file
+                            if not xlsx_file:
+                                print("Fallback: Using most recently modified file")
+                                xlsx_files = list(download_dir.glob('*.xlsx'))
+                                if xlsx_files:
+                                    xlsx_file = max(xlsx_files, key=lambda f: f.stat().st_mtime)
+                                    print(f"Using fallback file: {xlsx_file.name}")
                             
                             if xlsx_file:
                                 print(f'Found downloaded file: {xlsx_file}')
@@ -303,8 +355,8 @@ def extract_cse_listings():
                                 xlsx_file.rename(new_filename)
                                 print(f'Renamed to: {new_filename}')
                                 
-                                # Read the XLSX file
-                                df = pd.read_excel(new_filename)
+                                # Read the XLSX file with proper header row (row 2 contains column names)
+                                df = pd.read_excel(new_filename, header=2)
                                 
                                 # Convert DataFrame rows to our listing format
                                 for _, row in df.iterrows():
@@ -312,9 +364,22 @@ def extract_cse_listings():
                                     symbol = str(row.get('Symbol', '')).strip()
                                     name = str(row.get('Company', '')).strip()
                                     
-                                    # Get trading status
-                                    trading_status = str(row.get('Trading', '')).strip().lower()
-                                    is_active = trading_status not in ['suspended', 'halted', 'delisted']
+                                    # Get trading start date from 'Trading' column
+                                    trading_date_raw = row.get('Trading', '')
+                                    trading_date = None
+                                    
+                                    # Parse the trading start date if available
+                                    if pd.notna(trading_date_raw):
+                                        try:
+                                            if hasattr(trading_date_raw, 'date'):
+                                                # It's already a datetime object
+                                                trading_date = trading_date_raw.date().isoformat()
+                                            else:
+                                                # Try to parse as string
+                                                trading_dt = pd.to_datetime(str(trading_date_raw))
+                                                trading_date = trading_dt.date().isoformat()
+                                        except:
+                                            trading_date = None
                                     
                                     if symbol and name and symbol.lower() != 'nan' and name.lower() != 'nan':
                                         listing = {
@@ -323,9 +388,9 @@ def extract_cse_listings():
                                             'name': name,
                                             'listing_url': f'https://thecse.com/en/listings/{symbol}',
                                             'scraped_at': datetime.now().isoformat(),
-                                            'status': trading_status if trading_status else 'listed',
-                                            'active': is_active,
-                                            'status_date': datetime.now().date().isoformat()
+                                            'status': 'listed',  # All companies in the file are currently listed
+                                            'active': True,     # All companies in the file are active
+                                            'status_date': trading_date if trading_date else datetime.now().date().isoformat()
                                         }
                                         listings.append(listing)
                                 

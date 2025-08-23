@@ -54,10 +54,7 @@ ENV PATH="/usr/lib/chromium:${PATH}"
 # Switch back to airflow user
 USER airflow
 
-# Set up Chrome environment variables
-ENV CHROME_BIN=/usr/bin/chromium
-ENV CHROMIUM_PATH=/usr/bin/chromium
-ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
+# Chrome environment variables already set above
 
 # Install the Docker provider and python docker SDK
 USER airflow
