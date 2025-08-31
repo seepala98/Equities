@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ETF Holdings Analysis</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .container { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        .btn:hover { background: #0056b3; }
+        .btn-success { background: #28a745; } .btn-success:hover { background: #1e7e34; }
+        .btn-info { background: #17a2b8; } .btn-info:hover { background: #138496; }
+        .btn-warning { background: #ffc107; color: #212529; } .btn-warning:hover { background: #e0a800; }
+        .error { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .success { background: #d4edda; color: #155724; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .etf-card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 15px; }
+        .etf-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .etf-title { color: #007bff; font-size: 1.3em; font-weight: bold; }
+        .etf-subtitle { color: #666; font-size: 0.9em; margin-top: 5px; }
+        .holdings-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .holdings-table th, .holdings-table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        .holdings-table th { background: #f1f3f4; font-weight: bold; }
+        .holdings-table tr:nth-child(even) { background: #f8f9fa; }
+        .weight-bar { height: 8px; background: #e9ecef; border-radius: 4px; margin-top: 5px; }
+        .weight-fill { height: 100%; background: linear-gradient(90deg, #007bff, #28a745); border-radius: 4px; }
+        .nav { text-align: center; margin-bottom: 30px; }
+        .nav a { margin: 0 15px; color: #007bff; text-decoration: none; font-weight: bold; }
+        .nav a:hover { text-decoration: underline; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+        .stat-card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center; }
+        .stat-number { font-size: 2em; font-weight: bold; color: #007bff; }
+        .stat-label { color: #666; font-size: 0.9em; }
+        .no-holdings { text-align: center; padding: 40px; color: #666; }
+        .popular-etfs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 20px 0; }
+        .etf-option { background: white; border: 1px solid #ddd; border-radius: 4px; padding: 10px; cursor: pointer; transition: all 0.2s; }
+        .etf-option:hover { border-color: #007bff; background: #f0f8ff; }
+        h1, h2, h3 { color: #333; }
+        .header { text-align: center; margin-bottom: 30px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔍 ETF Holdings Analysis</h1>
+        <p>Analyze the composition, sector allocation, and regional distribution of ETFs</p>
+    </div>
+
+    <div class="nav">
+        <a href="{% url 'home' %}">← Home</a>
+        <a href="{% url 'etf_analysis' %}">Performance Analysis</a>
+        <a href="{% url 'etf_holdings' %}">Holdings Analysis</a>
+    </div>
+
+    {% if error_message %}
+        <div class="error">{{ error_message }}</div>
+    {% endif %}
+
+    <!-- Fetch New ETF Section -->
+    <div class="container">
+        <h2>📥 Fetch ETF Data</h2>
+        <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: end;">
+            <form method="post" style="display: flex; gap: 15px; align-items: end;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="fetch_etf">
+                <div class="form-group" style="margin-bottom: 0; flex: 1;">
+                    <label for="symbol">ETF Symbol:</label>
+                    <input type="text" id="symbol" name="symbol" placeholder="e.g., XGRO, VEQT, VTI" required>
+                </div>
+                <button type="submit" class="btn btn-success">Fetch ETF</button>
+            </form>
+            
+            <div>
+                <p><strong>Or try popular Canadian ETFs:</strong></p>
+                <div class="popular-etfs">
+                    {% for symbol, name in popular_etfs.items %}
+                    <div class="etf-option" onclick="document.getElementById('symbol').value='{{ symbol }}'">
+                        <strong>{{ symbol }}</strong><br>
+                        <small>{{ name|truncatechars:30 }}</small>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Existing ETFs List -->
+    {% if etfs_with_stats %}
+    <div class="container">
+        <h2>💼 Your ETF Portfolio ({{ etfs_with_stats|length }} ETFs)</h2>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+            {% for etf_stat in etfs_with_stats %}
+            <div class="etf-card">
+                <div class="etf-header">
+                    <div>
+                        <div class="etf-title">{{ etf_stat.etf.symbol }}</div>
+                        <div class="etf-subtitle">{{ etf_stat.etf.name|truncatechars:40 }}</div>
+                    </div>
+                    <form method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="view_holdings">
+                        <input type="hidden" name="symbol" value="{{ etf_stat.etf.symbol }}">
+                        <button type="submit" class="btn btn-info">View Holdings</button>
+                    </form>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number">{{ etf_stat.etf.aum_formatted }}</div>
+                        <div class="stat-label">Assets (AUM)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{{ etf_stat.holdings_count }}</div>
+                        <div class="stat-label">Holdings</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{{ etf_stat.etf.mer_formatted }}</div>
+                        <div class="stat-label">MER</div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Holdings Details -->
+    {% if selected_etf and holdings_data.success %}
+    <div class="container">
+        <h2>📊 {{ selected_etf.symbol }} - Holdings Breakdown</h2>
+        
+        <div class="etf-card">
+            <div class="etf-header">
+                <div>
+                    <div class="etf-title">{{ holdings_data.etf_info.name }}</div>
+                    <div class="etf-subtitle">{{ holdings_data.etf_info.fund_family }}</div>
+                </div>
+                <div style="text-align: right;">
+                    <div><strong>AUM:</strong> {{ holdings_data.etf_info.aum }}</div>
+                    <div><strong>MER:</strong> {{ holdings_data.etf_info.mer }}</div>
+                    <div><strong>Category:</strong> {{ holdings_data.etf_info.category }}</div>
+                </div>
+            </div>
+
+            {% if holdings_data.holdings %}
+            <h3>🔝 Top Holdings ({{ holdings_data.holdings|length }})</h3>
+            <table class="holdings-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Symbol</th>
+                        <th>Name</th>
+                        <th>Weight</th>
+                        <th>Exchange</th>
+                        <th>Sector</th>
+                        <th>Region</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for holding in holdings_data.holdings %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td><strong>{{ holding.symbol }}</strong></td>
+                        <td>{{ holding.name|truncatechars:40 }}</td>
+                        <td>
+                            {{ holding.weight_percentage|floatformat:2 }}%
+                            <div class="weight-bar">
+                                <div class="weight-fill" style="width: {{ holding.weight_percentage|floatformat:1 }}%"></div>
+                            </div>
+                        </td>
+                        <td>{{ holding.exchange }}</td>
+                        <td>{{ holding.sector|default:"N/A" }}</td>
+                        <td>{{ holding.region|default:"N/A" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="no-holdings">
+                <h3>📋 No Holdings Data Available</h3>
+                <p>Holdings data is not available for this ETF through yfinance API.</p>
+                <p>For complete holdings information, visit the fund company's website:</p>
+                {% if selected_etf.fund_family %}
+                <ul>
+                    <li><strong>Fund Family:</strong> {{ selected_etf.fund_family }}</li>
+                    <li><strong>Manual Data Entry:</strong> Coming soon!</li>
+                </ul>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Sector Allocations -->
+            {% if holdings_data.sector_allocations %}
+            <h3>🏭 Sector Allocation</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                {% for sector in holdings_data.sector_allocations %}
+                <div class="stat-card">
+                    <div class="stat-number">{{ sector.percentage|floatformat:1 }}%</div>
+                    <div class="stat-label">{{ sector.sector }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Geographic Allocations -->
+            {% if holdings_data.geographic_allocations %}
+            <h3>🌍 Geographic Allocation</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                {% for region in holdings_data.geographic_allocations %}
+                <div class="stat-card">
+                    <div class="stat-number">{{ region.percentage|floatformat:1 }}%</div>
+                    <div class="stat-label">{{ region.region }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Help Section -->
+    <div class="container" style="background: #e7f3ff;">
+        <h2>ℹ️ How to Use</h2>
+        <ol>
+            <li><strong>Fetch ETF:</strong> Enter an ETF symbol (like XGRO, VEQT) to download its information</li>
+            <li><strong>View Holdings:</strong> Click "View Holdings" to see detailed composition</li>
+            <li><strong>Analyze Data:</strong> Review sector allocations, geographic distribution, and top holdings</li>
+        </ol>
+        
+        <h3>📊 Data Sources & Limitations</h3>
+        <ul>
+            <li><strong>Basic Info:</strong> Fetched from Yahoo Finance (AUM, MER, etc.)</li>
+            <li><strong>Holdings:</strong> Limited availability through yfinance API</li>
+            <li><strong>Complete Data:</strong> For full holdings, visit fund company websites</li>
+            <li><strong>Future Enhancement:</strong> Custom scrapers for Vanguard, iShares, etc.</li>
+        </ul>
+    </div>
+
+    <script>
+        // Auto-focus on symbol input
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('symbol').focus();
+        });
+    </script>
+</body>
+</html>

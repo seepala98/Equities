@@ -5,7 +5,33 @@
     <title>Stock Scraper</title>
   </head>
   <body>
-    <h1>Fetch stock data</h1>
+    <h1>Stock & ETF Analysis Platform</h1>
+    
+    <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+      <p><strong>🚀 Professional Analysis Tools:</strong></p>
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 15px;">
+        <a href="{% url 'etf_analysis' %}" style="color: #007bff; text-decoration: none; font-weight: bold; padding: 10px; background: white; border-radius: 4px; text-align: center;">
+          📈 Performance Analysis<br>
+          <small>Investment returns & growth</small>
+        </a>
+        <a href="{% url 'etf_holdings' %}" style="color: #007bff; text-decoration: none; font-weight: bold; padding: 10px; background: white; border-radius: 4px; text-align: center;">
+          🔍 Holdings Analysis<br>
+          <small>ETF composition & sectors</small>
+        </a>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+        <a href="{% url 'asset_classification' %}" style="color: #007bff; text-decoration: none; font-weight: bold; padding: 10px; background: white; border-radius: 4px; text-align: center;">
+          🏷️ Asset Classification<br>
+          <small>Stocks, ETFs, bonds & more</small>
+        </a>
+        <a href="{% url 'sector_analysis' %}" style="color: #007bff; text-decoration: none; font-weight: bold; padding: 10px; background: white; border-radius: 4px; text-align: center; border: 2px solid #28a745;">
+          🏭 Sector Analysis<br>
+          <small><strong>NEW!</strong> Official yfinance sectors</small>
+        </a>
+      </div>
+    </div>
+
+    <h2>Fetch Individual Stock Data</h2>
     {% if message %}
       <p><strong>{{ message }}</strong></p>
     {% endif %}

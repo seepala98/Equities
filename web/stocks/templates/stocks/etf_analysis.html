@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ETF Performance Analysis</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .container { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        .btn:hover { background: #0056b3; }
+        .results { background: #e8f5e8; padding: 20px; border-radius: 8px; border-left: 5px solid #28a745; }
+        .error { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .metric { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .metric-label { font-weight: bold; }
+        .metric-value { color: #28a745; }
+        .negative { color: #dc3545; }
+        .etf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; margin: 20px 0; }
+        .etf-card { background: white; padding: 15px; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+        .etf-card:hover { background: #f0f0f0; border-color: #007bff; }
+        .etf-symbol { font-weight: bold; color: #007bff; }
+        .etf-name { font-size: 0.9em; color: #666; margin-top: 5px; }
+        h1, h2 { color: #333; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .nav { text-align: center; margin-bottom: 20px; }
+        .nav a { margin: 0 15px; color: #007bff; text-decoration: none; }
+        .nav a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📈 ETF Performance Analysis</h1>
+        <p>Analyze how your investments in Canadian ETFs would have performed over time</p>
+    </div>
+
+    <div class="nav">
+        <a href="{% url 'home' %}">← Back to Home</a>
+        <a href="{% url 'etf_analysis' %}">Performance Analysis</a>
+        <a href="{% url 'etf_holdings' %}">Holdings Analysis</a>
+    </div>
+
+    {% if error_message %}
+        <div class="error">{{ error_message }}</div>
+    {% endif %}
+
+    <div class="container">
+        <h2>Investment Calculator</h2>
+        
+        <form method="post">
+            {% csrf_token %}
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div>
+                    <div class="form-group">
+                        <label for="symbol">ETF Symbol:</label>
+                        <input type="text" id="symbol" name="symbol" placeholder="e.g., XGRO, VEQT, VTI" 
+                               value="{{ request.POST.symbol }}" required>
+                        <small>Enter symbol without .TO suffix (will be added automatically)</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="investment_amount">Investment Amount ($):</label>
+                        <input type="number" id="investment_amount" name="investment_amount" 
+                               placeholder="10000" step="0.01" min="1" 
+                               value="{{ request.POST.investment_amount }}" required>
+                    </div>
+                </div>
+                
+                <div>
+                    <div class="form-group">
+                        <label for="start_date">Start Date:</label>
+                        <input type="date" id="start_date" name="start_date" 
+                               value="{{ request.POST.start_date }}" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="end_date">End Date (optional):</label>
+                        <input type="date" id="end_date" name="end_date" 
+                               value="{{ request.POST.end_date }}">
+                        <small>Leave blank for current date</small>
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn">Calculate Performance</button>
+        </form>
+    </div>
+
+    {% if results %}
+    <div class="results">
+        <h2>📊 Performance Results for {{ results.symbol }}</h2>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+            <div>
+                <h3>Investment Summary</h3>
+                <div class="metric">
+                    <span class="metric-label">Initial Investment:</span>
+                    <span class="metric-value">${{ results.initial_investment|floatformat:2 }}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Investment Period:</span>
+                    <span class="metric-value">{{ results.start_date }} to {{ results.end_date }}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Years Held:</span>
+                    <span class="metric-value">{{ results.years_held }} years</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Shares Purchased:</span>
+                    <span class="metric-value">{{ results.shares_purchased|floatformat:6 }}</span>
+                </div>
+            </div>
+            
+            <div>
+                <h3>Price Movement</h3>
+                <div class="metric">
+                    <span class="metric-label">Start Price:</span>
+                    <span class="metric-value">${{ results.start_price|floatformat:4 }}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">End Price:</span>
+                    <span class="metric-value">${{ results.end_price|floatformat:4 }}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Price Change:</span>
+                    {% if results.end_price > results.start_price %}
+                        <span class="metric-value">+${{ results.end_price|floatformat:4|add:results.start_price|floatformat:4 }}</span>
+                    {% else %}
+                        <span class="negative">-${{ results.start_price|floatformat:4|add:results.end_price|floatformat:4 }}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <hr style="margin: 20px 0;">
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+            <div>
+                <h3>💰 Final Results</h3>
+                <div class="metric">
+                    <span class="metric-label">Dividend Income:</span>
+                    <span class="metric-value">${{ results.dividend_income|floatformat:2 }}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Stock Value:</span>
+                    <span class="metric-value">${{ results.final_stock_value|floatformat:2 }}</span>
+                </div>
+                <div class="metric" style="font-size: 1.2em; padding-top: 10px; border-top: 2px solid #28a745;">
+                    <span class="metric-label">Total Final Value:</span>
+                    <span class="metric-value"><strong>${{ results.total_final_value|floatformat:2 }}</strong></span>
+                </div>
+            </div>
+            
+            <div>
+                <h3>📈 Performance Metrics</h3>
+                <div class="metric">
+                    <span class="metric-label">Total Return ($):</span>
+                    {% if results.total_return_dollars >= 0 %}
+                        <span class="metric-value">${{ results.total_return_dollars|floatformat:2 }}</span>
+                    {% else %}
+                        <span class="negative">${{ results.total_return_dollars|floatformat:2 }}</span>
+                    {% endif %}
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Total Return (%):</span>
+                    {% if results.total_return_percent >= 0 %}
+                        <span class="metric-value">{{ results.total_return_percent|floatformat:2 }}%</span>
+                    {% else %}
+                        <span class="negative">{{ results.total_return_percent|floatformat:2 }}%</span>
+                    {% endif %}
+                </div>
+                <div class="metric" style="font-size: 1.2em; padding-top: 10px; border-top: 2px solid #007bff;">
+                    <span class="metric-label">Annualized Return:</span>
+                    {% if results.annualized_return_percent >= 0 %}
+                        <span class="metric-value"><strong>{{ results.annualized_return_percent|floatformat:2 }}%</strong></span>
+                    {% else %}
+                        <span class="negative"><strong>{{ results.annualized_return_percent|floatformat:2 }}%</strong></span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="container">
+        <h2>🇨🇦 Popular Canadian ETFs</h2>
+        <p>Click on any ETF below to quickly analyze it:</p>
+        
+        <div class="etf-grid">
+            {% for symbol, name in popular_etfs.items %}
+            <div class="etf-card" onclick="document.getElementById('symbol').value='{{ symbol }}'; document.getElementById('investment_amount').value='10000'; document.getElementById('start_date').value='2020-01-01';">
+                <div class="etf-symbol">{{ symbol }}</div>
+                <div class="etf-name">{{ name }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <p><small>💡 <strong>Tip:</strong> Click on any ETF card above to auto-fill the form with that symbol and test with $10,000 starting from Jan 1, 2020.</small></p>
+    </div>
+
+    <div class="container" style="background: #e7f3ff;">
+        <h2>ℹ️ How to Use</h2>
+        <ol>
+            <li><strong>Enter ETF Symbol:</strong> Use the Canadian symbol without .TO (e.g., XGRO, VEQT, VTI)</li>
+            <li><strong>Investment Amount:</strong> How much you would have invested</li>
+            <li><strong>Start Date:</strong> When you would have made the investment</li>
+            <li><strong>End Date:</strong> Leave blank for current date, or specify an end date</li>
+            <li><strong>Click Calculate:</strong> See how your investment would have performed!</li>
+        </ol>
+        
+        <p><strong>🔍 Data Source:</strong> All data is fetched from Yahoo Finance and includes dividend/distribution payments for accurate total return calculations.</p>
+    </div>
+
+    <script>
+        // Set default start date to 5 years ago if empty
+        document.addEventListener('DOMContentLoaded', function() {
+            const startDateInput = document.getElementById('start_date');
+            if (!startDateInput.value) {
+                const fiveYearsAgo = new Date();
+                fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
+                startDateInput.value = fiveYearsAgo.toISOString().split('T')[0];
+            }
+        });
+    </script>
+</body>
+</html>

@@ -7,3 +7,10 @@ undetected-chromedriver
 xvfbwrapper
 pandas
 openpyxl
+yfinance==0.2.65
+requests-cache>=1.1.1
+numpy
+scipy
+multitasking>=0.0.11
+curl-cffi>=0.5.0
+apache-airflow-providers-postgres

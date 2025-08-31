@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sector & Industry Analysis</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .container { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        .btn:hover { background: #0056b3; }
+        .btn-success { background: #28a745; } .btn-success:hover { background: #1e7e34; }
+        .btn-info { background: #17a2b8; } .btn-info:hover { background: #138496; }
+        .error { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .success { background: #d4edda; color: #155724; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .nav { text-align: center; margin-bottom: 30px; }
+        .nav a { margin: 0 15px; color: #007bff; text-decoration: none; font-weight: bold; }
+        .nav a:hover { text-decoration: underline; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .analysis-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .results-container { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin: 20px 0; }
+        .data-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        .data-table th, .data-table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        .data-table th { background: #f1f3f4; font-weight: bold; }
+        .data-table tr:nth-child(even) { background: #f8f9fa; }
+        .sector-card { background: linear-gradient(135deg, #007bff, #28a745); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .sector-title { font-size: 2em; font-weight: bold; margin-bottom: 10px; }
+        .sector-key { opacity: 0.8; font-size: 0.9em; }
+        .stock-card { background: linear-gradient(135deg, #17a2b8, #6f42c1); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .stock-title { font-size: 1.8em; font-weight: bold; margin-bottom: 10px; }
+        .data-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+        .data-item { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; }
+        .data-value { font-size: 1.5em; font-weight: bold; color: #007bff; }
+        .data-label { color: #666; font-size: 0.9em; margin-top: 5px; }
+        .sector-selector { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 20px 0; }
+        .sector-option { background: white; border: 2px solid #ddd; border-radius: 8px; padding: 15px; cursor: pointer; transition: all 0.2s; text-align: center; }
+        .sector-option:hover { border-color: #007bff; background: #f0f8ff; }
+        .sector-option.selected { border-color: #28a745; background: #f0fff0; }
+        .feature-highlight { background: linear-gradient(135deg, #ffc107, #fd7e14); color: white; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center; }
+        h1, h2, h3 { color: #333; }
+        .overview-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+        .overview-card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center; }
+        .overview-number { font-size: 2.5em; font-weight: bold; color: #007bff; }
+        .overview-label { color: #666; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏭 Sector & Industry Analysis</h1>
+        <p>Professional sector analysis using <strong>official yfinance Sector/Industry modules</strong></p>
+        <div class="feature-highlight">
+            <strong>🚀 NEW:</strong> Powered by yfinance's official Sector and Industry API - get real-time sector data, top ETFs, and industry insights!
+        </div>
+    </div>
+
+    <div class="nav">
+        <a href="{% url 'home' %}">← Home</a>
+        <a href="{% url 'etf_analysis' %}">Performance Analysis</a>
+        <a href="{% url 'etf_holdings' %}">Holdings Analysis</a>
+        <a href="{% url 'asset_classification' %}">Asset Classification</a>
+        <a href="{% url 'sector_analysis' %}">Sector Analysis</a>
+    </div>
+
+    {% if error_message %}
+        <div class="error">{{ error_message }}</div>
+    {% endif %}
+
+    <!-- Overview Statistics -->
+    <div class="overview-stats">
+        <div class="overview-card">
+            <div class="overview-number">{{ stock_count|floatformat:0 }}</div>
+            <div class="overview-label">Individual Stocks</div>
+        </div>
+        <div class="overview-card">
+            <div class="overview-number">{{ etf_count|floatformat:0 }}</div>
+            <div class="overview-label">ETFs Available</div>
+        </div>
+    </div>
+
+    <!-- Analysis Tools -->
+    <div class="container">
+        <h2>📊 Analysis Tools</h2>
+        
+        <div class="analysis-grid">
+            <!-- Sector Analysis -->
+            <div>
+                <h3>🏭 Analyze Sector</h3>
+                <p>Get comprehensive sector data including top ETFs and companies</p>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="analyze_sector">
+                    
+                    <div class="form-group">
+                        <label for="sector_key">Select Sector:</label>
+                        <select id="sector_key" name="sector_key" required>
+                            <option value="">-- Choose a Sector --</option>
+                            {% for key, name in sector_keys.items %}
+                                <option value="{{ key }}">{{ name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-success">🔍 Analyze Sector</button>
+                </form>
+            </div>
+            
+            <!-- Stock Analysis -->
+            <div>
+                <h3>📈 Analyze Individual Stock</h3>
+                <p>Get sector and industry classification for any stock</p>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="analyze_stock">
+                    
+                    <div class="form-group">
+                        <label for="symbol">Stock Symbol:</label>
+                        <input type="text" id="symbol" name="symbol" placeholder="e.g., SHOP, AAPL, MSFT" required>
+                        <small>Canadian stocks will automatically try .TO suffix</small>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-info">📊 Analyze Stock</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sector Analysis Results -->
+    {% if sector_data and sector_data.success %}
+    <div class="results-container">
+        <div class="sector-card">
+            <div class="sector-title">{{ sector_data.name }}</div>
+            <div class="sector-key">Sector Key: {{ sector_data.key }}</div>
+        </div>
+        
+        <div class="data-grid">
+            <div class="data-item">
+                <div class="data-value">
+                    {% if sector_data.has_top_etfs %}✅{% else %}❌{% endif %}
+                </div>
+                <div class="data-label">Top ETFs Available</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="data-value">
+                    {% if sector_data.has_top_companies %}✅{% else %}❌{% endif %}
+                </div>
+                <div class="data-label">Top Companies Available</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="data-value">
+                    {% if sector_data.has_industries %}✅{% else %}❌{% endif %}
+                </div>
+                <div class="data-label">Industries Data</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="data-value">
+                    {% if sector_data.research_reports %}✅{% else %}❌{% endif %}
+                </div>
+                <div class="data-label">Research Reports</div>
+            </div>
+        </div>
+        
+        {% if sector_data.overview %}
+        <h3>📋 Sector Overview</h3>
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+            {{ sector_data.overview }}
+        </div>
+        {% endif %}
+        
+        <div class="success">
+            <strong>✅ Success:</strong> Sector data successfully retrieved using yfinance's official Sector module!
+            <br><small>Data source: <a href="https://ranaroussi.github.io/yfinance/reference/yfinance.sector_industry.html" target="_blank">yfinance Sector/Industry API</a></small>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Stock Analysis Results -->
+    {% if stock_analysis and stock_analysis.success %}
+    <div class="results-container">
+        <div class="stock-card">
+            <div class="stock-title">{{ stock_analysis.symbol }}</div>
+            <div style="opacity: 0.9;">Individual Stock Analysis</div>
+        </div>
+        
+        <div class="data-grid">
+            <div class="data-item">
+                <div class="data-value">{{ stock_analysis.sector|default:"N/A" }}</div>
+                <div class="data-label">Sector</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="data-value">{{ stock_analysis.industry|default:"N/A" }}</div>
+                <div class="data-label">Industry</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="data-value">{{ stock_analysis.sector_key|default:"N/A" }}</div>
+                <div class="data-label">Sector Key</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="data-value">{{ stock_analysis.industry_key|default:"N/A" }}</div>
+                <div class="data-label">Industry Key</div>
+            </div>
+        </div>
+        
+        {% if stock_analysis.sector_data and stock_analysis.sector_data.success %}
+        <h3>🏭 Related Sector Information</h3>
+        <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; border: 2px solid #007bff;">
+            <p><strong>Sector:</strong> {{ stock_analysis.sector_data.name }}</p>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px;">
+                <div>
+                    <strong>Top ETFs:</strong> 
+                    {% if stock_analysis.sector_data.has_top_etfs %}Available{% else %}Not Available{% endif %}
+                </div>
+                <div>
+                    <strong>Top Companies:</strong> 
+                    {% if stock_analysis.sector_data.has_top_companies %}Available{% else %}Not Available{% endif %}
+                </div>
+                <div>
+                    <strong>Industries:</strong> 
+                    {% if stock_analysis.sector_data.has_industries %}Available{% else %}Not Available{% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="success">
+            <strong>✅ Success:</strong> Stock sector data successfully retrieved!
+            <br><small>This stock can be linked to sector-specific ETFs and industry comparisons</small>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Quick Sector Selector -->
+    <div class="container">
+        <h2>🚀 Quick Sector Analysis</h2>
+        <p>Click any sector below for instant analysis:</p>
+        
+        <div class="sector-selector">
+            {% for key, name in sector_keys.items %}
+            <div class="sector-option" onclick="quickAnalyzeSector('{{ key }}')">
+                <strong>{{ name }}</strong><br>
+                <small>{{ key }}</small>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- How It Works -->
+    <div class="container" style="background: #e7f3ff;">
+        <h2>ℹ️ How Sector Analysis Works</h2>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+                <h3>🔗 Official yfinance Integration</h3>
+                <p>This system uses yfinance's official <a href="https://ranaroussi.github.io/yfinance/reference/yfinance.sector_industry.html" target="_blank">Sector and Industry modules</a>:</p>
+                <ul>
+                    <li><code>yf.Sector('technology')</code> - Get sector data</li>
+                    <li><code>yf.Industry('software-infrastructure')</code> - Get industry data</li>
+                    <li><code>ticker.info.get('sectorKey')</code> - Link stocks to sectors</li>
+                </ul>
+                
+                <h3>📊 Available Data</h3>
+                <ul>
+                    <li>Top ETFs by sector</li>
+                    <li>Top companies by sector</li>
+                    <li>Industry classifications</li>
+                    <li>Research reports</li>
+                    <li>Sector overviews</li>
+                </ul>
+            </div>
+            
+            <div>
+                <h3>🎯 Use Cases</h3>
+                <ul>
+                    <li><strong>ETF Discovery:</strong> Find top ETFs for specific sectors</li>
+                    <li><strong>Stock Classification:</strong> Understand what sector/industry stocks belong to</li>
+                    <li><strong>Sector Comparison:</strong> Compare performance across sectors</li>
+                    <li><strong>Investment Research:</strong> Access professional sector insights</li>
+                </ul>
+                
+                <h3>🔍 Example Queries</h3>
+                <ul>
+                    <li>What are the top Technology ETFs?</li>
+                    <li>Which sector does Shopify (SHOP) belong to?</li>
+                    <li>What industries are within Healthcare?</li>
+                    <li>How do Energy stocks compare to Tech?</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function quickAnalyzeSector(sectorKey) {
+            // Set the select value and submit the form
+            document.getElementById('sector_key').value = sectorKey;
+            
+            // Highlight the selected option
+            document.querySelectorAll('.sector-option').forEach(el => el.classList.remove('selected'));
+            event.target.classList.add('selected');
+            
+            // Submit the form
+            const form = document.querySelector('form[action=""]');
+            const actionInput = form.querySelector('input[name="action"]');
+            actionInput.value = 'analyze_sector';
+            form.submit();
+        }
+        
+        // Auto-focus on symbol input for quick stock analysis
+        document.addEventListener('DOMContentLoaded', function() {
+            const symbolInput = document.getElementById('symbol');
+            if (symbolInput) {
+                symbolInput.focus();
+            }
+        });
+    </script>
+</body>
+</html>
