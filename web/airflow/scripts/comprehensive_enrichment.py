@@ -477,14 +477,17 @@ class ComprehensiveEnrichmentManager:
     def update_enriched_data(self, symbol: str, analysis_data: Dict[str, Any]) -> bool:
         """Update enriched ticker data with change detection."""
         
-        # Create data hash for change detection
+        # Create data hash for change detection (including error status)
         key_data = {
             'asset_type': analysis_data.get('asset_type'),
             'sector': analysis_data.get('sector'),
             'industry': analysis_data.get('industry'),
             'country': analysis_data.get('country'),
             'market_cap': analysis_data.get('market_cap'),
-            'company_name': analysis_data.get('company_name')
+            'company_name': analysis_data.get('company_name'),
+            'fetch_success': analysis_data.get('fetch_success'),
+            'fetch_errors': str(analysis_data.get('fetch_errors', [])),
+            'is_404_failed': analysis_data.get('is_404_failed', False)
         }
         data_hash = hashlib.sha256(str(sorted(key_data.items())).encode()).hexdigest()
         
