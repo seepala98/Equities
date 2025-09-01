@@ -94,7 +94,7 @@ class ComprehensiveEnrichmentManager:
             logger.error(f"❌ Database connection failed: {e}")
             return False
     
-    def get_stale_tickers(self, days: int = 7, limit: int = 500, min_quality: float = 0.8) -> List[str]:
+    def get_stale_tickers(self, days: int = 7, limit: int = 1000, min_quality: float = 0.8) -> List[str]:
         """Get tickers needing enrichment (skips high-quality tickers >= 80% AND excludes 404 failed tickers)."""
         query = """
         SELECT DISTINCT l.symbol
@@ -572,7 +572,7 @@ class ComprehensiveEnrichmentManager:
             logger.error(f"Error updating enriched data for {symbol}: {e}")
             return False
     
-    def process_ticker_batch(self, tickers: List[str], batch_size: int = 20) -> Dict[str, int]:
+    def process_ticker_batch(self, tickers: List[str], batch_size: int = 50) -> Dict[str, int]:
         """Process a batch of tickers with comprehensive enrichment."""
         stats = {'processed': 0, 'updated': 0, 'errors': 0, 'high_quality': 0}
         
@@ -669,7 +669,7 @@ def test_comprehensive_connection() -> bool:
     return manager.test_connection()
 
 
-def process_comprehensive_batch(batch_size: int = 25) -> Dict[str, Any]:
+def process_comprehensive_batch(batch_size: int = 50) -> Dict[str, Any]:
     """Process a comprehensive batch of tickers."""
     manager = get_enrichment_manager()
     

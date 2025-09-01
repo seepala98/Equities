@@ -65,10 +65,10 @@ dag = DAG(
     'comprehensive_ticker_enrichment',
     default_args=default_args,
     description='🚀 Comprehensive background ticker enrichment using yfinance',
-    schedule_interval='0 */6 * * *',  # Every 6 hours (6AM, 12PM, 6PM, 12AM) - ULTRA-AGGRESSIVE MODE
+    schedule_interval='*/30 * * * *',  # Every 30 minutes - HYPER-AGGRESSIVE MODE
     catchup=False,
     max_active_runs=1,
-    tags=['enrichment', 'yfinance', 'background', 'comprehensive', 'ultra-aggressive', '4x-daily'],
+    tags=['enrichment', 'yfinance', 'background', 'comprehensive', 'hyper-aggressive', '48x-daily'],
 )
 
 
@@ -155,8 +155,8 @@ def identify_comprehensive_targets(**context) -> List[str]:
     logger.info(f"   High quality data: {pre_stats.get('high_quality_pct', 0)}%")
     logger.info(f"   Fresh this week: {pre_stats.get('fresh_week_pct', 0)}%")
     
-    # Get stale tickers for processing
-    stale_tickers = manager.get_stale_tickers(days=7, limit=100)
+    # Get stale tickers for processing (increased limit for hyper-aggressive mode)
+    stale_tickers = manager.get_stale_tickers(days=7, limit=1000)
     
     if not stale_tickers:
         logger.info("🎉 No stale tickers found - all data is fresh!")
@@ -193,20 +193,20 @@ def execute_comprehensive_enrichment(**context) -> Dict[str, Any]:
     logger.info("   💰 Market cap and financial metrics")
     logger.info("   📊 Data quality scoring")
     
-    # ULTRA-AGGRESSIVE PROCESSING: Complete all tickers within 1 week!
+    # HYPER-AGGRESSIVE PROCESSING: Complete all tickers rapidly!
     total_stats = {'processed': 0, 'updated': 0, 'errors': 0, 'high_quality': 0}
-    max_batches = 8  # Process up to 8 batches (200 tickers) per run
+    max_batches = 8  # Process up to 8 batches (400 tickers) per run
     batch_count = 0
     
-    logger.info(f"🚀 ULTRA-AGGRESSIVE MODE: Processing up to {max_batches} batches of 25 tickers each (200 per run)")
-    logger.info(f"🎯 TARGET: Complete all 5,390 tickers within 7 days (4x daily runs)")
+    logger.info(f"🚀 HYPER-AGGRESSIVE MODE: Processing up to {max_batches} batches of 50 tickers each (400 per run)")
+    logger.info(f"🎯 TARGET: Complete all 5,390+ tickers rapidly (48x daily runs - every 30 minutes)")
     
     while batch_count < max_batches:
         batch_count += 1
         logger.info(f"🔄 Executing batch {batch_count}/{max_batches}...")
         
         # Process batch with rate-limited size
-        batch_stats = process_comprehensive_batch(batch_size=25)
+        batch_stats = process_comprehensive_batch(batch_size=50)
         
         # Accumulate stats
         total_stats['processed'] += batch_stats.get('processed', 0)
@@ -375,7 +375,7 @@ def generate_comprehensive_report(**context) -> str:
    💰 Market cap and financial metrics cached
    🔍 Advanced asset classification available
 
-🔄 NEXT SCHEDULED RUN: Every 6 hours (6AM, 12PM, 6PM, 12AM) - ULTRA-AGGRESSIVE!
+🔄 NEXT SCHEDULED RUN: Every 30 minutes - HYPER-AGGRESSIVE MODE!
 🎯 STATUS: Comprehensive background enrichment system operational!
 
 {"🎉 SYSTEM STATUS: ALL GREEN! Background processing optimized webapp performance!" if processing_results.get('updated', 0) > 0 else "⚠️  No updates this run - system may be fully up-to-date"}
