@@ -82,11 +82,11 @@ def run_scrape_letter(exchange: str, letter: str, status: str = 'listed') -> str
                     if not sym:
                         continue
                     if status == 'listed':
-                        cur.execute("""
-                            INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, scraped_at)
-                            VALUES (%s, %s, %s, %s, %s, %s, now())
-                            ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, scraped_at = now()
-                        """, (exchange, sym, inst_name, listing_url, status, True))
+                                        cur.execute("""
+                                INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, asset_type, scraped_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                                ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, asset_type = EXCLUDED.asset_type, scraped_at = now()
+                            """, (exchange, sym, inst_name, listing_url, status, True, 'STOCK'))
                     elif status == 'delisted':
                         cur.execute("""
                             INSERT INTO stocks_delistedlisting (exchange, symbol, name, listing_url, delisted_date, scraped_at)
@@ -251,10 +251,10 @@ def run_scrape_status_page(exchange: str, status: str = 'delisted') -> str:
                 """, (exchange, symbol, name, listing_url, None))
             else:
                 cur.execute("""
-                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, status_date, scraped_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, now())
-                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, status_date = EXCLUDED.status_date, scraped_at = now()
-                """, (exchange, symbol, name, listing_url, status, status not in ('delisted', 'suspended'), status_date))
+                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, status_date, asset_type, scraped_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now())
+                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, status_date = EXCLUDED.status_date, asset_type = EXCLUDED.asset_type, scraped_at = now()
+                """, (exchange, symbol, name, listing_url, status, status not in ('delisted', 'suspended'), status_date, 'STOCK'))
             count += 1
         conn.commit()
     finally:
@@ -335,10 +335,10 @@ def run_scrape_cboe(exchange: str = 'CBOE') -> str:
                 if not sym:
                     continue
                 cur.execute("""
-                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, scraped_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, now())
-                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, scraped_at = now()
-                """, (exchange.lower(), sym, name or None, None, 'listed', True))
+                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, asset_type, scraped_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, asset_type = EXCLUDED.asset_type, scraped_at = now()
+                """, (exchange.lower(), sym, name or None, None, 'listed', True, 'STOCK'))
                 count += 1
         else:
             for item in arr:
@@ -347,10 +347,10 @@ def run_scrape_cboe(exchange: str = 'CBOE') -> str:
                 if not sym:
                     continue
                 cur.execute("""
-                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, scraped_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, now())
-                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, scraped_at = now()
-                """, (exchange.lower(), sym, name or None, None, 'listed', True))
+                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, asset_type, scraped_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, asset_type = EXCLUDED.asset_type, scraped_at = now()
+                """, (exchange.lower(), sym, name or None, None, 'listed', True, 'STOCK'))
                 count += 1
         conn.commit()
     finally:
@@ -510,10 +510,10 @@ def run_scrape_cse(exchange: str = 'CSE') -> str:
                 if not sym:
                     continue
                 cur.execute("""
-                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, scraped_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, now())
-                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, scraped_at = now()
-                """, (exchange.lower(), sym, name or None, None, 'listed', True))
+                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, asset_type, scraped_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, asset_type = EXCLUDED.asset_type, scraped_at = now()
+                """, (exchange.lower(), sym, name or None, None, 'listed', True, 'STOCK'))
                 count += 1
         elif arr:
             for item in arr:
@@ -522,10 +522,10 @@ def run_scrape_cse(exchange: str = 'CSE') -> str:
                 if not sym:
                     continue
                 cur.execute("""
-                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, scraped_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, now())
-                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, scraped_at = now()
-                """, (exchange.lower(), sym, name or None, None, 'listed', True))
+                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, asset_type, scraped_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, asset_type = EXCLUDED.asset_type, scraped_at = now()
+                """, (exchange.lower(), sym, name or None, None, 'listed', True, 'STOCK'))
                 count += 1
         else:
             for tds in table_rows:
@@ -535,10 +535,10 @@ def run_scrape_cse(exchange: str = 'CSE') -> str:
                 if not sym:
                     continue
                 cur.execute("""
-                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, scraped_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, now())
-                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, scraped_at = now()
-                """, (exchange.lower(), sym, name or None, None, 'listed', True))
+                    INSERT INTO stocks_listing (exchange, symbol, name, listing_url, status, active, asset_type, scraped_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                    ON CONFLICT (exchange, symbol) DO UPDATE SET name = EXCLUDED.name, listing_url = EXCLUDED.listing_url, status = EXCLUDED.status, active = EXCLUDED.active, asset_type = EXCLUDED.asset_type, scraped_at = now()
+                """, (exchange.lower(), sym, name or None, None, 'listed', True, 'STOCK'))
                 count += 1
         conn.commit()
     finally:
