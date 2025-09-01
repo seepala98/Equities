@@ -10,7 +10,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     wget \
     unzip \
-    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # No browser needed: we will fetch data with yfinance
@@ -21,6 +20,6 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . /app
 
-RUN chmod +x /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.py
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["python", "/app/entrypoint.py"]

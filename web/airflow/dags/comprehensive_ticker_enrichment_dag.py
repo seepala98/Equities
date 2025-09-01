@@ -36,7 +36,7 @@ from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 from airflow.utils.dates import days_ago
 
-# Add scripts to Python path
+# Add scripts to Python path (they're built into the image)
 sys.path.append('/opt/airflow/dags/airflow/scripts')
 
 # Import comprehensive enrichment system

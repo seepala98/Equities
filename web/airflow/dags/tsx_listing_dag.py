@@ -3,8 +3,6 @@ from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 from datetime import datetime, timedelta
 import re
-import importlib.util
-from pathlib import Path
 
 DEFAULT_ARGS = {
     'owner': 'airflow',
@@ -75,18 +73,24 @@ with DAG(
 
     # Create TaskGroups — one per exchange — containing per-letter DockerOperator tasks
     groups = []
-    # Helper to load the scraper_no_django module from the DAGs folder by path.
+    # Robust cross-platform import - __init__.py preferred, path fallback
     def _call_scraper_by_path(exchange, letter, status='listed'):
-        # DAG file is located at .../airflow/dags/tsx_listing_dag.py under DAGS_FOLDER
-        dag_pkg_dir = Path(__file__).resolve().parents[1]  # points to .../airflow
-        candidate = dag_pkg_dir / 'scraper_no_django.py'
-        if not candidate.exists():
-            # fallback: try directly under DAGS_FOLDER
-            candidate = Path(__file__).resolve().parents[2] / 'scraper_no_django.py'
-        spec = importlib.util.spec_from_file_location('scraper_no_django', str(candidate))
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        # module may expose run_scrape_letter that accepts (exchange, letter, status)
+        try:
+            # First try: clean package import (works with __init__.py)
+            import scraper_no_django as module
+        except ImportError:
+            try:
+                # Fallback: add current directory to path
+                import sys
+                import os
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                if current_dir not in sys.path:
+                    sys.path.insert(0, current_dir)
+                import scraper_no_django as module
+            except ImportError as e:
+                raise RuntimeError(f'scraper_no_django module not found: {e}')
+        
+        # module may expose run_scrape_letter that accepts (exchange, letter, status)  
         if hasattr(module, 'run_scrape_letter'):
             try:
                 return module.run_scrape_letter(exchange, letter, status)
@@ -131,15 +135,23 @@ with DAG(
     # other groups but calls the scraper's CBOE CSV function which returns a simple
     # "Found N entries" string.
     with TaskGroup(group_id='cboe_group') as cboe_tg:
-        # import the scraper module by path like other tasks
+        # Robust cross-platform import
         def _call_cboe():
-            dag_pkg_dir = Path(__file__).resolve().parents[1]
-            candidate = dag_pkg_dir / 'scraper_no_django.py'
-            if not candidate.exists():
-                candidate = Path(__file__).resolve().parents[2] / 'scraper_no_django.py'
-            spec = importlib.util.spec_from_file_location('scraper_no_django', str(candidate))
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            try:
+                # First try: clean package import (works with __init__.py)
+                import scraper_no_django as module
+            except ImportError:
+                try:
+                    # Fallback: add current directory to path
+                    import sys
+                    import os
+                    current_dir = os.path.dirname(os.path.abspath(__file__))
+                    if current_dir not in sys.path:
+                        sys.path.insert(0, current_dir)
+                    import scraper_no_django as module
+                except ImportError as e:
+                    raise RuntimeError(f'scraper_no_django module not found: {e}')
+            
             if hasattr(module, 'run_scrape_cboe'):
                 return module.run_scrape_cboe('CBOE')
             raise RuntimeError('scraper_no_django does not expose run_scrape_cboe')
