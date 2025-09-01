@@ -95,7 +95,7 @@ class ComprehensiveEnrichmentManager:
             return False
     
     def get_stale_tickers(self, days: int = 7, limit: int = 500, min_quality: float = 0.8) -> List[str]:
-        """Get tickers needing enrichment (skips high-quality tickers >= 80% by default)."""
+        """Get tickers needing enrichment (skips high-quality tickers >= 80% AND excludes 404 failed tickers)."""
         query = """
         SELECT DISTINCT l.symbol
         FROM stocks_listing l
@@ -105,7 +105,7 @@ class ComprehensiveEnrichmentManager:
         AND (
             e.symbol IS NULL  -- No enriched data
             OR e.last_checked_at < NOW() - INTERVAL '%s days'  -- Stale
-            OR e.fetch_success = FALSE  -- Previous failure
+            OR (e.fetch_success = FALSE AND NOT e.fetch_errors::text LIKE '%%404_NOT_FOUND%%')  -- Failed but not 404
             OR e.data_quality_score < %s  -- Below quality threshold
         )
         AND NOT EXISTS (
@@ -114,6 +114,11 @@ class ComprehensiveEnrichmentManager:
             AND e2.data_quality_score >= %s  -- Skip high-quality tickers
             AND e2.last_checked_at >= NOW() - INTERVAL '1 days'  -- Recent high-quality data
         )
+        AND NOT EXISTS (
+            SELECT 1 FROM enriched_ticker_data e3
+            WHERE UPPER(e3.symbol) = UPPER(l.symbol)
+            AND e3.fetch_errors::text LIKE '%%404_NOT_FOUND%%'  -- Skip 404 failed tickers permanently
+        )
         ORDER BY l.symbol
         LIMIT %s
         """
@@ -121,9 +126,21 @@ class ComprehensiveEnrichmentManager:
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
+                    # First, count how many 404 failed tickers we're skipping
+                    skip_count_query = """
+                    SELECT COUNT(DISTINCT l.symbol) 
+                    FROM stocks_listing l
+                    INNER JOIN enriched_ticker_data e ON UPPER(l.symbol) = UPPER(e.symbol)
+                    WHERE e.fetch_errors::text LIKE '%404_NOT_FOUND%'
+                    """
+                    cur.execute(skip_count_query)
+                    skipped_404_count = cur.fetchone()[0]
+                    
                     cur.execute(query, (days, min_quality, min_quality, limit))
                     stale_tickers = [row[0].upper() for row in cur.fetchall()]
                     logger.info(f"📅 Found {len(stale_tickers)} stale tickers")
+                    if skipped_404_count > 0:
+                        logger.info(f"🚫 Automatically skipping {skipped_404_count} tickers permanently failed with 404 Not Found")
                     return stale_tickers
         except Exception as e:
             logger.error(f"Error fetching stale tickers: {e}")
@@ -206,13 +223,60 @@ class ComprehensiveEnrichmentManager:
             for attempt in range(max_retries):
                 try:
                     info = ticker.info or {}
-                    if info:
+                    
+                    # Check for 404/invalid ticker indicators
+                    is_404_or_delisted = False
+                    
+                    # Check 1: Only has trailingPegRatio with None value (common 404 response)
+                    if len(info) == 1 and 'trailingPegRatio' in info and info['trailingPegRatio'] is None:
+                        logger.warning(f"🚫 Invalid ticker detected: {symbol} (only trailingPegRatio=None)")
+                        is_404_or_delisted = True
+                    
+                    # Check 2: No essential price/company data indicators
+                    elif not any(key in info for key in ['regularMarketPrice', 'symbol', 'shortName', 'longName']):
+                        logger.warning(f"🚫 No essential ticker data for {symbol} - likely invalid or delisted")
+                        is_404_or_delisted = True
+                    
+                    # Check 3: Try historical data to confirm
+                    if not is_404_or_delisted:
+                        try:
+                            test_quote = ticker.history(period='1d')
+                            if test_quote.empty:
+                                logger.warning(f"🚫 No historical data for {symbol} - confirming invalid/delisted ticker")
+                                is_404_or_delisted = True
+                        except Exception as quote_e:
+                            error_msg = str(quote_e).lower()
+                            if any(phrase in error_msg for phrase in ['delisted', 'no data found', 'possibly delisted']):
+                                logger.warning(f"🚫 Delisted ticker confirmed: {symbol} - {quote_e}")
+                                is_404_or_delisted = True
+                    
+                    if is_404_or_delisted:
+                        analysis_result['fetch_errors'].append("404_NOT_FOUND")
+                        analysis_result['fetch_success'] = False
+                        analysis_result['is_404_failed'] = True
+                        logger.warning(f"🚫 MARKING AS 404 FAILED: {symbol}")
+                    elif info:
                         analysis_result['fetch_success'] = True
                         logger.debug(f"✅ Basic info fetched for {symbol}")
-                    break  # Success - exit retry loop
+                    else:
+                        # Truly empty info (rare case)
+                        analysis_result['fetch_errors'].append("EMPTY_INFO_RETURNED")
+                        analysis_result['fetch_success'] = False
+                        
+                    break  # Success or 404 detected - exit retry loop
                     
                 except Exception as e:
-                    if "429" in str(e) or "Too Many Requests" in str(e):
+                    error_str = str(e)
+                    
+                    # Handle 404 errors specifically - these are permanent failures
+                    if "404" in error_str or "Not Found" in error_str or "HTTP Error 404" in error_str:
+                        logger.warning(f"🚫 404 Error for {symbol} - ticker not found, marking as permanently failed")
+                        analysis_result['fetch_errors'].append("404_NOT_FOUND")
+                        analysis_result['fetch_success'] = False
+                        analysis_result['is_404_failed'] = True
+                        break  # Don't retry 404 errors
+                    
+                    elif "429" in error_str or "Too Many Requests" in error_str:
                         if attempt < max_retries - 1:
                             backoff_time = (2 ** attempt) * 10  # 10, 20, 40 seconds
                             logger.warning(f"⚠️ Rate limit hit for {symbol}, waiting {backoff_time}s (attempt {attempt + 1}/{max_retries})")
@@ -220,11 +284,11 @@ class ComprehensiveEnrichmentManager:
                             continue
                         else:
                             logger.error(f"❌ Rate limit exceeded for {symbol} after {max_retries} attempts")
-                            analysis_result['fetch_errors'].append("Rate limit exceeded after retries")
+                            analysis_result['fetch_errors'].append("RATE_LIMIT_EXCEEDED")
                             analysis_result['fetch_success'] = False
                             break
                     else:
-                        analysis_result['fetch_errors'].append(f"Info fetch error: {str(e)}")
+                        analysis_result['fetch_errors'].append(f"API_ERROR: {error_str}")
                         logger.warning(f"⚠️ Info fetch failed for {symbol}: {e}")
                         break
             
@@ -495,7 +559,13 @@ class ComprehensiveEnrichmentManager:
                     ))
                     
                     conn.commit()
-                    logger.info(f"✅ Updated {symbol} with version {new_version} (Quality: {analysis_data.get('data_quality_score', 0):.2f})")
+                    
+                    # Log 404 permanent failures prominently
+                    if analysis_data.get('is_404_failed', False):
+                        logger.warning(f"🚫 PERMANENTLY BLACKLISTED: {symbol} - 404 Not Found (will skip in future runs)")
+                    else:
+                        logger.info(f"✅ Updated {symbol} with version {new_version} (Quality: {analysis_data.get('data_quality_score', 0):.2f})")
+                    
                     return True
                     
         except Exception as e:
