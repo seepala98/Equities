@@ -8,14 +8,13 @@ from psycopg2.extras import execute_batch
 def process_cse_listings(**context):
     """Process CSE listings using the external extractor."""
     try:
-        # Import the extractor from the scripts directory
+        # Import the extractor from the scripts directory (built into image)
         import sys
-        from pathlib import Path
         
-        # Add scripts directory to Python path
-        scripts_dir = Path(__file__).resolve().parent.parent / 'scripts'
-        if str(scripts_dir) not in sys.path:
-            sys.path.append(str(scripts_dir))
+        # Add scripts directory to Python path (built into Docker image)
+        scripts_path = '/opt/airflow/dags/airflow/scripts'
+        if scripts_path not in sys.path:
+            sys.path.append(scripts_path)
         
         from cse_extractor import extract_cse_listings
         
