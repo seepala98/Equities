@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Exchange Listings</title>
+  <style>
+    body { font-family: sans-serif; max-width: 1100px; margin: 0 auto; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 12px; border: 1px solid #ddd; text-align: left; }
+    th { background: #f4f4f4; }
+    tr:nth-child(even) { background: #fafafa; }
+    .filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .filters input, .filters select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; }
+    .pagination { margin-top: 16px; display: flex; gap: 8px; align-items: center; }
+    .pagination a { padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; }
+    .pagination a:hover { background: #eee; }
+    .badge { padding: 2px 8px; border-radius: 12px; font-size: 12px; background: #e0f0ff; color: #005bb5; }
+    nav { margin-bottom: 20px; }
+    nav a { margin-right: 12px; color: #007bff; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="{% url 'home' %}">Home</a>
+    <a href="{% url 'listings' %}">Listings</a>
+    <a href="{% url 'etf_analysis' %}">ETF Analysis</a>
+    <a href="{% url 'etf_holdings' %}">Holdings</a>
+    <a href="{% url 'asset_classification' %}">Classification</a>
+    <a href="{% url 'sector_analysis' %}">Sectors</a>
+  </nav>
+
+  <h1>Exchange Listings</h1>
+
+  <form method="get" class="filters">
+    <input type="text" name="q" value="{{ search }}" placeholder="Search symbol or name..." />
+    <select name="exchange">
+      <option value="">All Exchanges</option>
+      {% for code, label in exchange_choices %}
+        <option value="{{ code }}" {% if exchange == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="asset_type">
+      <option value="">All Types</option>
+      {% for code, label in asset_type_choices %}
+        <option value="{{ code }}" {% if asset_type == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Filter</button>
+    <a href="{% url 'listings' %}">Clear</a>
+  </form>
+
+  <p>Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ page_obj.paginator.count }} listings</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Symbol</th>
+        <th>Name</th>
+        <th>Exchange</th>
+        <th>Type</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for listing in page_obj %}
+        <tr>
+          <td><strong>{{ listing.symbol }}</strong></td>
+          <td>{{ listing.name }}</td>
+          <td>{{ listing.exchange }}</td>
+          <td><span class="badge">{{ listing.asset_type }}</span></td>
+          <td>{{ listing.status }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">No listings found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="pagination">
+    {% if page_obj.has_previous %}
+      <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&exchange={{ exchange }}&asset_type={{ asset_type }}">&laquo; Prev</a>
+    {% endif %}
+    <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&exchange={{ exchange }}&asset_type={{ asset_type }}">Next &raquo;</a>
+    {% endif %}
+  </div>
+</body>
+</html>

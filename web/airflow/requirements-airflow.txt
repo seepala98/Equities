@@ -2,9 +2,8 @@ psycopg2-binary
 requests
 beautifulsoup4
 lxml
-selenium
-undetected-chromedriver
-xvfbwrapper
+# Browser automation — Playwright replaces Selenium/undetected-chromedriver/xvfbwrapper
+playwright>=1.44
 pandas
 openpyxl
 yfinance==0.2.65

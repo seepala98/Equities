@@ -1,5 +1,6 @@
 """Handler for CSE listings in the airflow DAG."""
 import json
+import os
 from pathlib import Path
 from datetime import datetime
 import psycopg2
@@ -10,26 +11,26 @@ def process_cse_listings(**context):
     try:
         # Import the extractor from the scripts directory (built into image)
         import sys
-        
+
         # Add scripts directory to Python path (built into Docker image)
         scripts_path = '/opt/airflow/dags/airflow/scripts'
         if scripts_path not in sys.path:
             sys.path.append(scripts_path)
-        
+
         from cse_extractor import extract_cse_listings
-        
+
         # Get listings from CSE
         listings = extract_cse_listings()
-        
+
         if not listings:
             raise ValueError("No listings were extracted")
-            
-        # Connect to PostgreSQL
+
+        # Connect to PostgreSQL using environment variables (no hardcoded credentials)
         conn = psycopg2.connect(
-            host="db",  # Docker service name
-            database="stockdb",
-            user="stockuser",
-            password="stockpass"
+            host=os.environ.get("POSTGRES_HOST", "db"),
+            database=os.environ.get("POSTGRES_DB", "stockdb"),
+            user=os.environ.get("POSTGRES_USER", "stockuser"),
+            password=os.environ.get("POSTGRES_PASSWORD", "stockpass"),
         )
         
         try:

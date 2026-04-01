@@ -1,0 +1,65 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django
+  namespace: equities
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: django
+  template:
+    metadata:
+      labels:
+        app: django
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+        - name: django
+          image: equities/web:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: equities-config
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef: { name: equities-secrets, key: POSTGRES_DB }
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: { name: equities-secrets, key: POSTGRES_USER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: equities-secrets, key: POSTGRES_PASSWORD }
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef: { name: equities-secrets, key: DJANGO_SECRET_KEY }
+          readinessProbe:
+            httpGet:
+              path: /api/v1/sectors/
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/sectors/
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: django
+  namespace: equities
+spec:
+  selector:
+    app: django
+  ports:
+    - port: 8000
+      targetPort: 8000

@@ -66,3 +66,11 @@ webserver_config.py
 # Legacy files (replaced with better alternatives)
 entrypoint.sh
 web/entrypoint.sh
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Prometheus / Grafana data
+prometheus_data/
+grafana_data/

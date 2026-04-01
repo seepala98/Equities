@@ -1,148 +1,136 @@
 services:
+  # ── Database ──────────────────────────────────────────────────────────────
   db:
     image: postgres:15
+    env_file: .env
     environment:
-      POSTGRES_DB: stockdb
-      POSTGRES_USER: stockuser
-      POSTGRES_PASSWORD: stockpass
+      POSTGRES_DB: ${POSTGRES_DB:-stockdb}
+      POSTGRES_USER: ${POSTGRES_USER:-stockuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stockuser} -d ${POSTGRES_DB:-stockdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
-  pgadmin:
-    image: dpage/pgadmin4:7
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@example.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    depends_on:
-      - db
-    ports:
-      - "8080:80"
+  # ── Redis ─────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis_data:/data
 
+  # ── Django backend ────────────────────────────────────────────────────────
   web:
     build:
       context: ./web
       dockerfile: Dockerfile
-
-    volumes:
-      - ./web:/app
-    ports:
-      - "8000:8000"
+    env_file: .env
     environment:
       DJANGO_SETTINGS_MODULE: project.settings
-      POSTGRES_DB: stockdb
-      POSTGRES_USER: stockuser
-      POSTGRES_PASSWORD: stockpass
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-stockdb}
+      POSTGRES_USER: ${POSTGRES_USER:-stockuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost}
+    volumes:
+      - ./web:/app
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Do NOT expose 8000 directly in production — go through nginx
+    expose:
+      - "8000"
 
-  # Airflow common configuration
+  # ── React frontend ────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    expose:
+      - "80"
+    depends_on:
+      - web
+
+  # ── Nginx reverse proxy ───────────────────────────────────────────────────
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+      - frontend
+    restart: unless-stopped
+
+  # ── pgAdmin ───────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:7
+    env_file: .env
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-changeme}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+
+  # ── Airflow common config ─────────────────────────────────────────────────
   x-airflow-common:
     &airflow-common
     build:
       context: ./web
       dockerfile: airflow/Dockerfile.airflow
-    image: investmentportfolio_airflow:latest
+    image: equities_airflow:latest
+    env_file: .env
     environment: &airflow-common-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/user_dags
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://stockuser:stockpass@db:5432/stockdb
-      # Security configuration - shared secret key for all Airflow components
-      AIRFLOW__WEBSERVER__SECRET_KEY: 'equities_airflow_secret_key_2025'
-      # Logging configuration for proper log access
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-stockuser}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-stockdb}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY:-airflow-secret}
       AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
       AIRFLOW__LOGGING__FAB_LOGGING_LEVEL: WARNING
-      # Core configuration 
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: 'false'
-      # Admin user configuration (official Airflow approach)
-      _AIRFLOW_WWW_USER_USERNAME: admin
-      _AIRFLOW_WWW_USER_PASSWORD: admin
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-changeme}
     volumes:
-      # Mount DAG files to clean directory (scripts are built into image)
       - ./web/airflow/dags:/opt/airflow/user_dags:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
-  # Official Airflow initialization service
   airflow-init:
     <<: *airflow-common
     entrypoint: /bin/bash
     command:
       - -c
       - |
-        function ver() {
-          printf "%04d%04d%04d%04d" $${1//./ }
-        }
-        airflow_version=$$(AIRFLOW__LOGGING__LOGGING_LEVEL=INFO airflow version)
-        airflow_version_comparable=$$(ver $${airflow_version})
-        min_airflow_version=2.2.0
-        min_airflow_version_comparable=$$(ver $${min_airflow_version})
-        if (( airflow_version_comparable < min_airflow_version_comparable )); then
-          echo
-          echo -e "\033[1;31mERROR!!!: Too old Airflow version $${airflow_version}!\e[0m"
-          echo "The minimum Airflow version supported: $${min_airflow_version}. Only use this or higher!"
-          echo
-          exit 1
-        fi
-        if [[ -z "$${AIRFLOW_UID}" ]]; then
-          echo
-          echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
-          echo "If you are on Linux, you SHOULD follow the instructions below to set "
-          echo "AIRFLOW_UID environment variable, otherwise files will be owned by root."
-          echo "For other operating systems you can get rid of the warning with manually created .env file:"
-          echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#setting-the-right-airflow-user"
-          echo
-        fi
-        one_meg=1048576
-        mem_available=$$(($$(getconf _PHYS_PAGES) * $$(getconf PAGE_SIZE) / one_meg))
-        cpus_available=$$(grep -cE 'cpu[0-9]+' /proc/stat)
-        disk_available=$$(df / | tail -1 | awk '{print $$4}')
-        warning_resources="false"
-        if (( mem_available < 4000 )) ; then
-          echo
-          echo -e "\033[1;33mWARNING!!!: Not enough memory available for Docker.\e[0m"
-          echo "At least 4GB of memory required. You have $$(numfmt --to iec $$((mem_available * one_meg)))"
-          echo
-          warning_resources="true"
-        fi
-        if (( cpus_available < 2 )); then
-          echo
-          echo -e "\033[1;33mWARNING!!!: Not enough CPUS available for Docker.\e[0m"
-          echo "At least 2 CPUs recommended. You have $${cpus_available}"
-          echo
-          warning_resources="true"
-        fi
-        if (( disk_available < one_meg )); then
-          echo
-          echo -e "\033[1;33mWARNING!!!: Not enough Disk space available for Docker.\e[0m"
-          echo "At least 1 GiB recommended. You have $$(numfmt --to iec $$((disk_available * 1024 )))"
-          echo
-          warning_resources="true"
-        fi
-        if [[ $${warning_resources} == "true" ]]; then
-          echo
-          echo -e "\033[1;33mWARNING!!!: You have not enough resources to run Airflow (see above)!\e[0m"
-          echo "Please follow the instructions to increase amount of resources available:"
-          echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
-          echo
-        fi
-        mkdir -p /sources/logs /sources/dags /sources/plugins
-        chown -R "$${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
-        /entrypoint airflow db init
+        airflow db init
         airflow users create \
-            --username admin \
+            --username ${_AIRFLOW_WWW_USER_USERNAME:-admin} \
             --firstname Admin \
             --lastname User \
             --role Admin \
             --email admin@example.com \
-            --password admin
+            --password ${_AIRFLOW_WWW_USER_PASSWORD:-changeme} || true
 
-  # Airflow webserver
   airflow-webserver:
     <<: *airflow-common
     command: webserver
@@ -153,9 +141,8 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-    restart: always
+    restart: unless-stopped
 
-  # Airflow scheduler  
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
@@ -164,9 +151,40 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-    restart: always
+    restart: unless-stopped
 
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    ports:
+      - "9090:9090"
+    depends_on:
+      - web
 
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
 
 volumes:
   postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:

@@ -2,16 +2,17 @@ FROM apache/airflow:2.8.1-python3.9
 
 USER root
 
-# Install docker CLI and Chrome dependencies
+# Install docker CLI (needed so Airflow tasks can interact with Docker socket)
+# Playwright installs its own Chromium via `playwright install`, so we only need
+# the system libraries that Chromium depends on — no separate chromium/chromedriver
+# packages, no Xvfb virtual display needed.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         docker.io \
         ca-certificates \
         curl \
-        xvfb \
-        chromium \
-        chromium-driver \
-        fonts-liberation \
+        wget \
+        # Playwright Chromium system dependencies
         libasound2 \
         libatk-bridge2.0-0 \
         libatk1.0-0 \
@@ -29,44 +30,33 @@ RUN apt-get update \
         libxkbcommon0 \
         libxrandr2 \
         xdg-utils \
-        wget \
-        unzip \
+        fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-# Switch to root to set up Chrome and permissions
-USER root
+# Create data directory for CSE downloads
+RUN mkdir -p /opt/airflow/data/cse/downloads \
+    && chown -R airflow:root /opt/airflow/data
 
-
-# Create necessary directories and copy chromedriver to writable location
-RUN mkdir -p /opt/chrome/driver /opt/airflow/data/cse/downloads /home/airflow/.config/chromium && \
-    cp /usr/bin/chromedriver /opt/chrome/driver/chromedriver && \
-    chmod 777 /opt/chrome/driver/chromedriver && \
-    chown -R airflow:root /opt/chrome && \
-    chown -R airflow:root /home/airflow/.config && \
-    chown -R airflow:root /opt/airflow/data
-
-# Set Chrome environment variables
-ENV CHROME_BIN=/usr/bin/chromium
-ENV CHROMIUM_PATH=/usr/bin/chromium
-ENV CHROMEDRIVER_PATH=/opt/chrome/driver/chromedriver
-ENV PATH="/usr/lib/chromium:${PATH}"
-
-# Switch back to airflow user
 USER airflow
 
-# Chrome environment variables already set above
+# Install Airflow providers
+RUN pip install --no-cache-dir \
+    'apache-airflow-providers-docker' \
+    'apache-airflow-providers-postgres' \
+    docker
 
-# Install the Docker provider and python docker SDK
-USER airflow
-RUN pip install --no-cache-dir 'apache-airflow-providers-docker' docker
-
-# Install project requirements so Django and scraper code can run inside Airflow
+# Install project requirements (includes playwright)
 COPY airflow/requirements-airflow.txt /tmp/requirements-airflow.txt
-USER airflow
-RUN python -m pip install --upgrade pip && python -m pip install -r /tmp/requirements-airflow.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-airflow.txt
+
+# Install Playwright's bundled Chromium browser.
+# This is self-contained — no system Chromium or Chromedriver needed.
+RUN playwright install chromium
+
 USER root
-# Copy only Airflow-specific files, exclude Django models
+# Copy Airflow DAGs and scripts into the image
 COPY airflow/dags /opt/airflow/dags
 COPY airflow/scripts /opt/airflow/dags/airflow/scripts
 RUN chown -R airflow: /opt/airflow/dags
+
 USER airflow
