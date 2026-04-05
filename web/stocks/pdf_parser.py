@@ -340,7 +340,7 @@ class PDFStatementParser:
                     symbol = symbol_match.group(1)
 
         # Extract shares and price from description
-        shares, price = self._extract_shares_price(description)
+        shares, price = self._extract_shares_price(description, amount)
 
         # If no shares/price found but this is a BUY with amount, estimate from amount
         # This handles cases where PDF extraction is imperfect
@@ -516,7 +516,7 @@ class PDFStatementParser:
                 return None
 
             symbol = self._extract_symbol_from_text(description)
-            shares, price = self._extract_shares_price(description)
+            shares, price = self._extract_shares_price(description, amount)
             exec_date = self._extract_execution_date(description)
 
             return {
@@ -563,7 +563,7 @@ class PDFStatementParser:
         return None
 
     def _extract_shares_price(
-        self, text: str
+        self, text: str, amount: Optional[Decimal] = None
     ) -> Tuple[Optional[Decimal], Optional[Decimal]]:
         """Extract shares and price from text."""
         shares = None
@@ -571,7 +571,7 @@ class PDFStatementParser:
 
         # Pattern: "Bought 0.0219 shares at $104.05 per share" or "at $2,400.00 per share"
         match = re.search(
-            r"(?:bought|sold)\s+([\d.]+)\s+shares?\s+at\s+\$?([\d,]+\.?\d*)\s+per\s+share",
+            r"(?:bought|sold)\s+([\d.]+)\s+shares?\s+at\s+\$?([\d,]+\.?\d*)(?:\s+per\s+share)?",
             text,
             re.IGNORECASE,
         )
@@ -579,8 +579,23 @@ class PDFStatementParser:
             try:
                 shares = Decimal(match.group(1))
                 price = Decimal(match.group(2).replace(",", ""))
+                return shares, price
             except (ValueError, IndexError):
                 pass
+                
+        match_no_price = re.search(
+            r"(?:bought|sold)\s+([\d.]+)\s+shares?",
+            text,
+            re.IGNORECASE,
+        )
+        if match_no_price:
+            try:
+                shares = Decimal(match_no_price.group(1))
+            except (ValueError, IndexError):
+                pass
+
+        if shares and shares > 0 and not price and amount:
+            price = round(abs(amount) / shares, 4)
 
         return shares, price
 

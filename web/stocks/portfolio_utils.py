@@ -224,7 +224,7 @@ def generate_daily_values(
         for buy in buys:
             symbol = buy["symbol"]
             bought = buy["total_shares"] or Decimal("0")
-            sold = sells_by_symbol.get(symbol, Decimal("0"))
+            sold = sells_by_symbol.get(symbol) or Decimal("0")
             shares = bought - sold
 
             if shares > 0:

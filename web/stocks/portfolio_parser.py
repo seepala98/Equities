@@ -140,7 +140,7 @@ class AccountStatementParser:
             return None
 
         symbol = self._extract_symbol(description)
-        shares, price = self._extract_shares_price(description)
+        shares, price = self._extract_shares_price(description, amount)
         exec_date = self._extract_execution_date(description)
 
         return {
@@ -171,7 +171,7 @@ class AccountStatementParser:
         return None
 
     def _extract_shares_price(
-        self, description: str
+        self, description: str, amount: Optional[Decimal] = None
     ) -> Tuple[Optional[Decimal], Optional[Decimal]]:
         """Extract shares and price from buy/sell description."""
         shares = None
@@ -186,8 +186,23 @@ class AccountStatementParser:
             try:
                 shares = Decimal(match.group(1))
                 price = Decimal(match.group(2).replace(",", ""))
+                return shares, price
             except (ValueError, IndexError):
                 pass
+                
+        match_no_price = re.search(
+            r"(?:bought|sold)\s+([\d.]+)\s+shares?",
+            description,
+            re.IGNORECASE,
+        )
+        if match_no_price:
+            try:
+                shares = Decimal(match_no_price.group(1))
+            except (ValueError, IndexError):
+                pass
+
+        if shares and shares > 0 and not price and amount:
+            price = round(abs(amount) / shares, 4)
 
         return shares, price
 
