@@ -530,7 +530,7 @@ def import_portfolio_transactions(request):
     for tx_data in transactions_data:
         symbol = tx_data.get("symbol", "").upper() if tx_data.get("symbol") else ""
         tx_type = tx_data.get("transaction_type", "OTHER")
-        
+
         # Check if transaction already exists to avoid duplicates
         exists = Transaction.objects.filter(
             portfolio=portfolio,
@@ -538,9 +538,9 @@ def import_portfolio_transactions(request):
             transaction_type=tx_type,
             date=tx_data.get("date"),
             quantity=tx_data.get("quantity"),
-            amount=tx_data.get("amount", 0)
+            amount=tx_data.get("amount", 0),
         ).exists()
-        
+
         if not exists:
             Transaction.objects.create(
                 portfolio=portfolio,
@@ -599,7 +599,7 @@ def create_portfolio_with_import(request):
         query_params = {"account_type": account_type}
         if account_number:
             query_params["account_number"] = account_number
-            
+
         portfolio = Portfolio.objects.filter(**query_params).first()
         if not portfolio:
             portfolio = Portfolio.objects.create(
@@ -613,16 +613,16 @@ def create_portfolio_with_import(request):
         for tx_data in transactions_data:
             symbol = tx_data.get("symbol", "").upper() if tx_data.get("symbol") else ""
             tx_type = tx_data.get("transaction_type", "OTHER")
-            
+
             exists = Transaction.objects.filter(
                 portfolio=portfolio,
                 symbol=symbol,
                 transaction_type=tx_type,
                 date=tx_data.get("date"),
                 quantity=tx_data.get("quantity"),
-                amount=tx_data.get("amount", 0)
+                amount=tx_data.get("amount", 0),
             ).exists()
-            
+
             if not exists:
                 Transaction.objects.create(
                     portfolio=portfolio,
@@ -646,7 +646,9 @@ def create_portfolio_with_import(request):
         for holding in holdings_data:
             PortfolioHolding.objects.update_or_create(
                 portfolio=portfolio,
-                symbol=holding.get("symbol", "").upper() if holding.get("symbol") else "",
+                symbol=holding.get("symbol", "").upper()
+                if holding.get("symbol")
+                else "",
                 statement_period=statement_period,
                 defaults={
                     "name": holding.get("name", ""),
@@ -655,7 +657,7 @@ def create_portfolio_with_import(request):
                     "market_price": holding.get("price"),
                     "market_value": holding.get("market_value", 0),
                     "book_cost": holding.get("book_cost", 0),
-                }
+                },
             )
             holdings_count += 1
 
@@ -665,12 +667,20 @@ def create_portfolio_with_import(request):
                 portfolio=portfolio,
                 statement_period=statement_period,
                 defaults={
-                    "last_statement_cash_balance": cash_summary_data.get("last_statement_cash_balance", 0),
-                    "total_cash_paid_in": cash_summary_data.get("total_cash_paid_in", 0),
-                    "total_cash_paid_out": cash_summary_data.get("total_cash_paid_out", 0),
-                    "closing_cash_balance": cash_summary_data.get("closing_cash_balance", 0),
+                    "last_statement_cash_balance": cash_summary_data.get(
+                        "last_statement_cash_balance", 0
+                    ),
+                    "total_cash_paid_in": cash_summary_data.get(
+                        "total_cash_paid_in", 0
+                    ),
+                    "total_cash_paid_out": cash_summary_data.get(
+                        "total_cash_paid_out", 0
+                    ),
+                    "closing_cash_balance": cash_summary_data.get(
+                        "closing_cash_balance", 0
+                    ),
                     "contributions_ytd": cash_summary_data.get("contributions_ytd", 0),
-                }
+                },
             )
             cash_count = 1
 
@@ -774,3 +784,65 @@ def portfolio_date_range(request, pk):
     )
 
     return Response(dates)
+
+
+@api_view(["GET"])
+def portfolio_heatmap_dynamic(request, pk):
+    """Get heatmap data for portfolio with custom date range."""
+    try:
+        portfolio = Portfolio.objects.get(id=pk)
+    except Portfolio.DoesNotExist:
+        return Response(
+            {"error": "Portfolio not found"}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    start_date = request.query_params.get("start_date")
+    end_date = request.query_params.get("end_date")
+    preset = request.query_params.get("preset")
+
+    from .portfolio_utils import get_dynamic_heatmap_data
+
+    heatmap_data = get_dynamic_heatmap_data(
+        portfolio, start_date=start_date, end_date=end_date, preset=preset
+    )
+
+    return Response(heatmap_data)
+
+
+@api_view(["GET"])
+def portfolio_heatmap_summary(request, pk):
+    """Get summary stats for heatmap."""
+    try:
+        portfolio = Portfolio.objects.get(id=pk)
+    except Portfolio.DoesNotExist:
+        return Response(
+            {"error": "Portfolio not found"}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    start_date = request.query_params.get("start_date")
+    end_date = request.query_params.get("end_date")
+    preset = request.query_params.get("preset")
+
+    from .portfolio_utils import get_heatmap_summary
+
+    summary = get_heatmap_summary(
+        portfolio, start_date=start_date, end_date=end_date, preset=preset
+    )
+
+    return Response(summary)
+
+
+@api_view(["GET"])
+def historical_prices(request, symbol):
+    """Get historical price data for a symbol."""
+    start_date = request.query_params.get("start_date")
+    end_date = request.query_params.get("end_date")
+    price_type = request.query_params.get("type", "daily")
+
+    from .portfolio_utils import get_historical_prices
+
+    prices = get_historical_prices(
+        symbol, start_date=start_date, end_date=end_date, price_type=price_type
+    )
+
+    return Response(prices)

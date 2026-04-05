@@ -294,3 +294,216 @@ def get_heatmap_data(portfolio) -> List[Dict]:
             )
 
     return heatmap_data
+
+
+def calculate_date_range(preset: str, start_date: str = None, end_date: str = None):
+    """Calculate start and end dates based on preset or explicit dates."""
+    from datetime import date, timedelta
+    from dateutil.relativedelta import relativedelta
+
+    if start_date and end_date:
+        return start_date, end_date
+
+    today = date.today()
+
+    presets = {
+        "1d": today - timedelta(days=1),
+        "1w": today - timedelta(weeks=1),
+        "1m": today - relativedelta(months=1),
+        "3m": today - relativedelta(months=3),
+        "6m": today - relativedelta(months=6),
+        "ytd": date(today.year, 1, 1),
+        "1y": today - relativedelta(years=1),
+        "5y": today - relativedelta(years=5),
+        "all": date(2000, 1, 1),
+    }
+
+    if preset and preset in presets:
+        return presets[preset].isoformat(), today.isoformat()
+
+    # Default to last 30 days
+    return (today - timedelta(days=30)).isoformat(), today.isoformat()
+
+
+def get_dynamic_heatmap_data(portfolio, start_date=None, end_date=None, preset=None):
+    """Get heatmap data with custom date range using historical price data."""
+    from decimal import Decimal
+    from datetime import date, timedelta
+    from dateutil.relativedelta import relativedelta
+
+    from .models import HistoricalPrice, Transaction, PortfolioHolding
+    from .views import fetch_prices_for_symbols
+
+    # Calculate actual date range
+    start_dt, end_dt = calculate_date_range(preset, start_date, end_date)
+    start_date_obj = date.fromisoformat(start_dt)
+    end_date_obj = date.fromisoformat(end_dt)
+
+    # Get holdings and their transactions for this portfolio
+    holdings = calculate_holdings(portfolio)
+
+    # Get unique symbols
+    symbols = [h["symbol"] for h in holdings if h.get("symbol")]
+
+    # Get historical prices for the date range
+    prices_qs = HistoricalPrice.objects.filter(
+        symbol__in=symbols,
+        date__gte=start_date_obj,
+        date__lte=end_date_obj,
+    ).order_by("symbol", "date")
+
+    # Build price lookup
+    price_lookup = {}
+    for p in prices_qs:
+        if p.symbol not in price_lookup:
+            price_lookup[p.symbol] = {}
+        price_lookup[p.symbol][p.date.isoformat()] = float(p.close_price)
+
+    heatmap_data = []
+    for h in holdings:
+        symbol = h.get("symbol")
+        if not symbol:
+            continue
+
+        quantity = float(h.get("quantity", 0))
+        if quantity <= 0:
+            continue
+
+        # Get start price (first available in range)
+        start_price = None
+        for d in range((end_date_obj - start_date_obj).days + 1):
+            check_date = (start_date_obj + timedelta(days=d)).isoformat()
+            if symbol in price_lookup and check_date in price_lookup[symbol]:
+                start_price = price_lookup[symbol][check_date]
+                break
+
+        # Get end price (last available in range)
+        end_price = None
+        for d in range((end_date_obj - start_date_obj).days + 1):
+            check_date = (end_date_obj - timedelta(days=d)).isoformat()
+            if symbol in price_lookup and check_date in price_lookup[symbol]:
+                end_price = price_lookup[symbol][check_date]
+                break
+
+        if start_price and end_price:
+            start_value = start_price * quantity
+            end_value = end_price * quantity
+            gain_loss = end_value - start_value
+            gain_loss_pct = (gain_loss / start_value * 100) if start_value > 0 else 0
+
+            heatmap_data.append(
+                {
+                    "symbol": symbol,
+                    "quantity": quantity,
+                    "start_price": start_price,
+                    "end_price": end_price,
+                    "start_value": start_value,
+                    "current_value": end_value,
+                    "gain_loss": gain_loss,
+                    "gain_loss_pct": gain_loss_pct,
+                }
+            )
+
+    return heatmap_data
+
+
+def get_heatmap_summary(portfolio, start_date=None, end_date=None, preset=None):
+    """Get summary statistics for heatmap."""
+    heatmap_data = get_dynamic_heatmap_data(portfolio, start_date, end_date, preset)
+
+    if not heatmap_data:
+        return {
+            "total_return": 0,
+            "total_return_pct": 0,
+            "best_symbol": None,
+            "best_return_pct": 0,
+            "worst_symbol": None,
+            "worst_return_pct": 0,
+            "average_return_pct": 0,
+            "stock_count": 0,
+        }
+
+    total_start_value = sum(h["start_value"] for h in heatmap_data)
+    total_end_value = sum(h["current_value"] for h in heatmap_data)
+    total_return = total_end_value - total_start_value
+    total_return_pct = (
+        (total_return / total_start_value * 100) if total_start_value > 0 else 0
+    )
+
+    best = max(heatmap_data, key=lambda h: h["gain_loss_pct"])
+    worst = min(heatmap_data, key=lambda h: h["gain_loss_pct"])
+    avg_return_pct = sum(h["gain_loss_pct"] for h in heatmap_data) / len(heatmap_data)
+
+    return {
+        "total_return": total_return,
+        "total_return_pct": total_return_pct,
+        "best_symbol": best["symbol"],
+        "best_return_pct": best["gain_loss_pct"],
+        "worst_symbol": worst["symbol"],
+        "worst_return_pct": worst["gain_loss_pct"],
+        "average_return_pct": avg_return_pct,
+        "stock_count": len(heatmap_data),
+    }
+
+
+def get_historical_prices(symbol, start_date=None, end_date=None, price_type="daily"):
+    """Get historical price data for a symbol."""
+    from datetime import date, timedelta
+    from dateutil.relativedelta import relativedelta
+
+    from .models import HistoricalPrice, IntradayPrice
+
+    today = date.today()
+
+    if not end_date:
+        end_date = today.isoformat()
+    if not start_date:
+        start_date = (today - relativedelta(months=1)).isoformat()
+
+    end_date_obj = (
+        date.fromisoformat(end_date) if isinstance(end_date, str) else end_date
+    )
+    start_date_obj = (
+        date.fromisoformat(start_date) if isinstance(start_date, str) else start_date
+    )
+
+    if price_type == "intraday":
+        # Get intraday data
+        prices = IntradayPrice.objects.filter(
+            symbol=symbol,
+            timestamp__gte=start_date_obj,
+            timestamp__lte=end_date_obj,
+            interval="15m",
+        ).order_by("timestamp")
+
+        return [
+            {
+                "timestamp": p.timestamp.isoformat(),
+                "open": float(p.open_price) if p.open_price else None,
+                "high": float(p.high_price) if p.high_price else None,
+                "low": float(p.low_price) if p.low_price else None,
+                "close": float(p.close_price) if p.close_price else None,
+                "volume": p.volume,
+            }
+            for p in prices
+        ]
+    else:
+        # Get daily data
+        prices = HistoricalPrice.objects.filter(
+            symbol=symbol,
+            date__gte=start_date_obj,
+            date__lte=end_date_obj,
+        ).order_by("date")
+
+        return [
+            {
+                "date": p.date.isoformat(),
+                "open": float(p.open_price) if p.open_price else None,
+                "high": float(p.high_price) if p.high_price else None,
+                "low": float(p.low_price) if p.low_price else None,
+                "close": float(p.close_price) if p.close_price else None,
+                "adj_close": float(p.adj_close) if p.adj_close else None,
+                "volume": p.volume,
+            }
+            for p in prices
+        ]

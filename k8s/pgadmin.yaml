@@ -1,0 +1,82 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: equities
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+    spec:
+      containers:
+        - name: pgadmin
+          image: dpage/pgadmin4:7
+          env:
+            - name: PGADMIN_DEFAULT_EMAIL
+              value: "admin@example.com"
+            - name: PGADMIN_DEFAULT_PASSWORD
+              value: "changeme"
+            - name: PGADMIN_REPLACE_SERVERS_ON_STARTUP
+              value: "True"
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: pgadmin-data
+              mountPath: /var/lib/pgadmin
+            - name: pgadmin-servers
+              mountPath: /servers.json
+              readOnly: true
+      volumes:
+        - name: pgadmin-data
+          emptyDir: {}
+        - name: pgadmin-servers
+          configMap:
+            name: pgadmin-servers-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgadmin-servers-config
+  namespace: equities
+data:
+  servers.json: |
+    {
+      "Servers": {
+        "1": {
+          "Name": "PostgreSQL",
+          "Group": "Servers",
+          "Host": "postgres",
+          "Port": 5432,
+          "MaintenanceDB": "stockdb",
+          "Username": "stockuser",
+          "Password": "changeme",
+          "SSLMode": "prefer"
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: equities
+spec:
+  selector:
+    app: pgadmin
+  ports:
+    - port: 8080
+      targetPort: 80
+  type: ClusterIP

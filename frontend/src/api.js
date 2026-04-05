@@ -62,5 +62,8 @@ export const portfolio = {
   holdings: (id) => api.get(`/portfolios/${id}/holdings/`),
   performance: (id, params) => api.get(`/portfolios/${id}/performance/`, { params }),
   heatmap: (id) => api.get(`/portfolios/${id}/heatmap/`),
+  heatmapDynamic: (id, params) => api.get(`/portfolios/${id}/heatmap-dynamic/`, { params }),
+  heatmapSummary: (id, params) => api.get(`/portfolios/${id}/heatmap-summary/`, { params }),
   dateRange: (id) => api.get(`/portfolios/${id}/date-range/`),
+  historicalPrices: (symbol, params) => api.get(`/historical-prices/${symbol}/`, { params }),
 }

@@ -33,16 +33,29 @@ spec:
           env:
             - name: POSTGRES_DB
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_DB }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_DB
             - name: POSTGRES_USER
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_USER }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_PASSWORD }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_PASSWORD
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "$(POSTGRES_USER)", "-d", "$(POSTGRES_DB)"]
@@ -64,3 +77,4 @@ spec:
   ports:
     - port: 5432
       targetPort: 5432
+  type: ClusterIP

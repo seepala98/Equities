@@ -29,16 +29,33 @@ spec:
           env:
             - name: POSTGRES_DB
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_DB }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_DB
             - name: POSTGRES_USER
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_USER }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_PASSWORD }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_PASSWORD
             - name: DJANGO_SECRET_KEY
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: DJANGO_SECRET_KEY }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: DJANGO_SECRET_KEY
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
           readinessProbe:
             httpGet:
               path: /api/v1/sectors/
@@ -63,3 +80,4 @@ spec:
   ports:
     - port: 8000
       targetPort: 8000
+  type: ClusterIP

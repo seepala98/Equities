@@ -6,6 +6,7 @@ import Listings from './pages/Listings'
 import SectorAnalysis from './pages/SectorAnalysis'
 import ImportPortfolio from './pages/ImportPortfolio'
 import Portfolio from './pages/Portfolio'
+import PortfolioHeatmap from './pages/PortfolioHeatmap'
 
 function NavItem({ to, label }) {
   return (
@@ -34,6 +35,7 @@ export default function App() {
             <NavItem to="/" label="Dashboard" />
             <NavItem to="/portfolio" label="Portfolio" />
             <NavItem to="/portfolio/import" label="Import" />
+            <NavItem to="/portfolio/heatmap" label="Heatmap" />
             <NavItem to="/etf-analysis" label="ETF Analysis" />
             <NavItem to="/etf-holdings" label="Holdings" />
             <NavItem to="/listings" label="Listings" />
@@ -46,6 +48,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/portfolio/import" element={<ImportPortfolio />} />
+          <Route path="/portfolio/heatmap" element={<PortfolioHeatmap />} />
           <Route path="/etf-analysis" element={<ETFAnalysis />} />
           <Route path="/etf-holdings" element={<ETFHoldings />} />
           <Route path="/listings" element={<Listings />} />
