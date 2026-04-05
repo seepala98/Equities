@@ -5,6 +5,7 @@ yfinance
 pandas
 beautifulsoup4
 lxml
+pdfplumber
 # Caching
 redis>=5.0
 django-redis>=5.4

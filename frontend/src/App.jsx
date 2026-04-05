@@ -4,6 +4,8 @@ import ETFAnalysis from './pages/ETFAnalysis'
 import ETFHoldings from './pages/ETFHoldings'
 import Listings from './pages/Listings'
 import SectorAnalysis from './pages/SectorAnalysis'
+import ImportPortfolio from './pages/ImportPortfolio'
+import Portfolio from './pages/Portfolio'
 
 function NavItem({ to, label }) {
   return (
@@ -30,6 +32,8 @@ export default function App() {
           <span className="text-lg font-bold text-brand-900 mr-4">Equities</span>
           <nav className="flex gap-1">
             <NavItem to="/" label="Dashboard" />
+            <NavItem to="/portfolio" label="Portfolio" />
+            <NavItem to="/portfolio/import" label="Import" />
             <NavItem to="/etf-analysis" label="ETF Analysis" />
             <NavItem to="/etf-holdings" label="Holdings" />
             <NavItem to="/listings" label="Listings" />
@@ -40,6 +44,8 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="/portfolio/import" element={<ImportPortfolio />} />
           <Route path="/etf-analysis" element={<ETFAnalysis />} />
           <Route path="/etf-holdings" element={<ETFHoldings />} />
           <Route path="/listings" element={<Listings />} />

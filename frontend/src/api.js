@@ -31,3 +31,36 @@ export const enriched = {
   list: (params) => api.get('/enriched/', { params }),
   detail: (symbol) => api.get(`/enriched/${symbol}/`),
 }
+
+export const portfolio = {
+  list: () => api.get('/portfolios/'),
+  create: (data) => api.post('/portfolios/create/', data),
+  detail: (id) => api.get(`/portfolios/${id}/`),
+  delete: (id) => api.delete(`/portfolios/${id}/`),
+  
+  parse: (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/portfolios/parse/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  
+  parseMultiple: (files) => {
+    const formData = new FormData()
+    files.forEach((file, index) => {
+      formData.append(`file_${index}`, file)
+    })
+    return api.post('/portfolios/parse-multiple/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  
+  import: (data) => api.post('/portfolios/import/', data),
+  
+  transactions: (id, params) => api.get(`/portfolios/${id}/transactions/`, { params }),
+  holdings: (id) => api.get(`/portfolios/${id}/holdings/`),
+  performance: (id, params) => api.get(`/portfolios/${id}/performance/`, { params }),
+  heatmap: (id) => api.get(`/portfolios/${id}/heatmap/`),
+  dateRange: (id) => api.get(`/portfolios/${id}/date-range/`),
+}
