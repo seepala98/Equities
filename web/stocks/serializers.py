@@ -14,6 +14,8 @@ from .models import (
     Transaction,
     PortfolioHolding,
     PortfolioCashSummary,
+    HistoricalPrice,
+    IntradayPrice,
 )
 
 
@@ -355,4 +357,39 @@ class PortfolioCashSummarySerializer(serializers.ModelSerializer):
             "closing_cash_balance",
             "contributions_ytd",
             "statement_period",
+        ]
+
+
+class HistoricalPriceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HistoricalPrice
+        fields = [
+            "id",
+            "symbol",
+            "date",
+            "open_price",
+            "high_price",
+            "low_price",
+            "close_price",
+            "adj_close",
+            "volume",
+            "currency",
+            "fetched_at",
+        ]
+
+
+class IntradayPriceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IntradayPrice
+        fields = [
+            "id",
+            "symbol",
+            "timestamp",
+            "open_price",
+            "high_price",
+            "low_price",
+            "close_price",
+            "volume",
+            "interval",
+            "fetched_at",
         ]

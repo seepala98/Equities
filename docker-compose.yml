@@ -116,9 +116,12 @@ services:
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-changeme}
     volumes:
       - ./web/airflow/dags:/opt/airflow/user_dags:ro
+      - ./web:/app:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   airflow-init:
@@ -127,7 +130,8 @@ services:
     command:
       - -c
       - |
-        airflow db init
+        airflow db migrate
+        airflow connections create-default-connections || true
         airflow users create \
             --username ${_AIRFLOW_WWW_USER_USERNAME:-admin} \
             --firstname Admin \

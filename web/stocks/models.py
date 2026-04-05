@@ -963,3 +963,71 @@ class PortfolioCashSummary(models.Model):
 
     def __str__(self):
         return f"{self.portfolio.name} Cash: {self.closing_cash_balance}"
+
+
+class HistoricalPrice(models.Model):
+    """Daily historical OHLCV price data for stocks/ETFs."""
+
+    symbol = models.CharField(max_length=16, db_index=True)
+    date = models.DateField()
+    open_price = models.DecimalField(
+        max_digits=18, decimal_places=6, null=True, blank=True
+    )
+    high_price = models.DecimalField(
+        max_digits=18, decimal_places=6, null=True, blank=True
+    )
+    low_price = models.DecimalField(
+        max_digits=18, decimal_places=6, null=True, blank=True
+    )
+    close_price = models.DecimalField(
+        max_digits=18, decimal_places=6, null=True, blank=True
+    )
+    adj_close = models.DecimalField(
+        max_digits=18, decimal_places=6, null=True, blank=True
+    )
+    volume = models.BigIntegerField(null=True, blank=True)
+    currency = models.CharField(max_length=10, default="CAD")
+    fetched_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["symbol", "date"]
+        ordering = ["-date"]
+        indexes = [
+            models.Index(fields=["symbol", "date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.symbol} - {self.date}"
+
+
+class IntradayPrice(models.Model):
+    """Intraday 15-min price data for stocks/ETFs - rolling 7-day window."""
+
+    symbol = models.CharField(max_length=16, db_index=True)
+    timestamp = models.DateTimeField()
+    open_price = models.DecimalField(
+        max_digits=18, decimal_places=6, null=True, blank=True
+    )
+    high_price = models.DecimalField(
+        max_digits=18, decimal_places=6, null=True, blank=True
+    )
+    low_price = models.DecimalField(
+        max_digits=18, decimal_places=6, null=True, blank=True
+    )
+    close_price = models.DecimalField(
+        max_digits=18, decimal_places=6, null=True, blank=True
+    )
+    volume = models.BigIntegerField(null=True, blank=True)
+    interval = models.CharField(max_length=10, default="15m")
+    fetched_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["symbol", "timestamp", "interval"]
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(fields=["symbol", "timestamp"]),
+            models.Index(fields=["symbol", "interval"]),
+        ]
+
+    def __str__(self):
+        return f"{self.symbol} - {self.timestamp} ({self.interval})"

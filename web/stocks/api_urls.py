@@ -96,8 +96,23 @@ urlpatterns = [
         name="api-portfolio-heatmap",
     ),
     path(
+        "portfolios/<int:pk>/heatmap-dynamic/",
+        api_views.portfolio_heatmap_dynamic,
+        name="api-portfolio-heatmap-dynamic",
+    ),
+    path(
+        "portfolios/<int:pk>/heatmap-summary/",
+        api_views.portfolio_heatmap_summary,
+        name="api-portfolio-heatmap-summary",
+    ),
+    path(
         "portfolios/<int:pk>/date-range/",
         api_views.portfolio_date_range,
         name="api-portfolio-date-range",
+    ),
+    path(
+        "historical-prices/<str:symbol>/",
+        api_views.historical_prices,
+        name="api-historical-prices",
     ),
 ]

@@ -1,20 +1,114 @@
 ---
+# ── Airflow PVC for DAGs ──────────────────────────────────────────────────────
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: airflow-dags-pvc
   namespace: equities
 spec:
-  accessModes: [ReadWriteMany]
+  accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 1Gi
+      storage: 200Mi
+  storageClassName: standard
 ---
+# ── Shared Airflow env (used by all Airflow pods) ─────────────────────────────
+# Airflow 3 requires the db connection via AIRFLOW__DATABASE__SQL_ALCHEMY_CONN.
+# The DAG processor is now a separate process but runs inside the scheduler pod.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-config
+  namespace: equities
+data:
+  AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
+  AIRFLOW__CORE__DAGS_FOLDER: "/opt/airflow/user_dags"
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: "false"
+  AIRFLOW__LOGGING__LOGGING_LEVEL: "INFO"
+  AIRFLOW__LOGGING__FAB_LOGGING_LEVEL: "WARNING"
+  # Airflow 3: standalone dag processor is enabled automatically with LocalExecutor
+  AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR: "true"
+---
+# ── Airflow DB init Job ───────────────────────────────────────────────────────
+# Runs once on deploy to migrate the Airflow metadata DB and create admin user.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: airflow-db-init
+  namespace: equities
+  annotations:
+    # Re-run on every deploy by changing helm hook equivalent
+    "helm.sh/hook": pre-install,pre-upgrade
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: airflow-init
+          image: equities/airflow:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              airflow db migrate
+              airflow connections create-default-connections || true
+              airflow users create \
+                  --username admin \
+                  --firstname Admin \
+                  --lastname User \
+                  --role Admin \
+                  --email admin@equities.local \
+                  --password "${AIRFLOW_ADMIN_PASSWORD}" || true
+              echo "Airflow DB init complete."
+          envFrom:
+            - configMapRef:
+                name: airflow-config
+          env:
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
+            - name: AIRFLOW__WEBSERVER__SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: AIRFLOW_SECRET_KEY
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_DB
+            - name: AIRFLOW_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: AIRFLOW_ADMIN_PASSWORD
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+---
+# ── Airflow Webserver Deployment ──────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: airflow-webserver
   namespace: equities
+  labels:
+    app: airflow-webserver
 spec:
   replicas: 1
   selector:
@@ -25,71 +119,80 @@ spec:
       labels:
         app: airflow-webserver
     spec:
-      initContainers:
-        - name: airflow-init
-          image: equities/airflow:latest
-          command: ["/bin/bash", "-c"]
-          args:
-            - |
-              airflow db init
-              airflow users create --username admin --firstname Admin --lastname User \
-                --role Admin --email admin@example.com \
-                --password $(AIRFLOW_ADMIN_PASSWORD) || true
-          envFrom:
-            - configMapRef:
-                name: equities-config
-          env:
-            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
-              value: "postgresql+psycopg2://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
-            - name: POSTGRES_USER
-              valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_USER }
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_PASSWORD }
-            - name: POSTGRES_DB
-              valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_DB }
-            - name: AIRFLOW_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef: { name: equities-secrets, key: AIRFLOW_ADMIN_PASSWORD }
       containers:
         - name: webserver
           image: equities/airflow:latest
+          imagePullPolicy: IfNotPresent
           command: ["airflow", "webserver"]
           ports:
             - containerPort: 8080
           envFrom:
             - configMapRef:
-                name: equities-config
+                name: airflow-config
           env:
             - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
               value: "postgresql+psycopg2://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
             - name: AIRFLOW__WEBSERVER__SECRET_KEY
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: AIRFLOW_SECRET_KEY }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: AIRFLOW_SECRET_KEY
             - name: POSTGRES_USER
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_USER }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_PASSWORD }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_DB }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_DB
           volumeMounts:
             - name: dags
               mountPath: /opt/airflow/user_dags
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 5
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
       volumes:
         - name: dags
           persistentVolumeClaim:
             claimName: airflow-dags-pvc
+      restartPolicy: Always
 ---
+# ── Airflow Scheduler Deployment ──────────────────────────────────────────────
+# In Airflow 3, the scheduler runs the DAG processor internally when
+# AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR=true. No separate dag-processor
+# pod is needed with LocalExecutor.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: airflow-scheduler
   namespace: equities
+  labels:
+    app: airflow-scheduler
 spec:
   replicas: 1
   selector:
@@ -103,33 +206,63 @@ spec:
       containers:
         - name: scheduler
           image: equities/airflow:latest
+          imagePullPolicy: IfNotPresent
           command: ["airflow", "scheduler"]
           envFrom:
             - configMapRef:
-                name: equities-config
+                name: airflow-config
           env:
             - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
               value: "postgresql+psycopg2://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
             - name: AIRFLOW__WEBSERVER__SECRET_KEY
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: AIRFLOW_SECRET_KEY }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: AIRFLOW_SECRET_KEY
             - name: POSTGRES_USER
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_USER }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_PASSWORD }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               valueFrom:
-                secretKeyRef: { name: equities-secrets, key: POSTGRES_DB }
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_DB
           volumeMounts:
             - name: dags
               mountPath: /opt/airflow/user_dags
+          livenessProbe:
+            exec:
+              command:
+                - airflow
+                - jobs
+                - check
+                - --job-type
+                - SchedulerJob
+                - --local
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
       volumes:
         - name: dags
           persistentVolumeClaim:
             claimName: airflow-dags-pvc
+      restartPolicy: Always
 ---
+# ── Airflow Webserver Service ──────────────────────────────────────────────────
 apiVersion: v1
 kind: Service
 metadata:
@@ -138,6 +271,8 @@ metadata:
 spec:
   selector:
     app: airflow-webserver
+  type: LoadBalancer
   ports:
-    - port: 8080
+    - name: http
+      port: 8080
       targetPort: 8080
