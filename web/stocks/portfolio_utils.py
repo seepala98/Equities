@@ -192,49 +192,66 @@ def calculate_portfolio_performance(
 def generate_daily_values(
     portfolio, start_date: date, end_date: date, current_holdings: List[Dict]
 ) -> List[Dict]:
-    """Generate daily portfolio values for charting."""
     from .models import Transaction
 
     symbols = [h["symbol"] for h in current_holdings]
     prices = get_current_prices(symbols)
 
+    all_transactions = list(
+        portfolio.transactions.filter(
+            date__gte=start_date,
+            date__lte=end_date,
+            transaction_type__in=["BUY", "DRIP", "SELL"],
+        )
+        .values("symbol", "date", "transaction_type", "quantity")
+        .order_by("date")
+    )
+
+    shares_by_symbol = {}
+    for h in current_holdings:
+        sym = h["symbol"]
+        bought = Decimal("0")
+        sold = Decimal("0")
+        for tx in all_transactions:
+            if tx["symbol"] == sym:
+                if tx["transaction_type"] in ("BUY", "DRIP"):
+                    bought += tx["quantity"] or Decimal("0")
+                elif tx["transaction_type"] == "SELL":
+                    sold += tx["quantity"] or Decimal("0")
+        shares_by_symbol[sym] = bought - sold
+
+    tx_by_date = {}
+    for tx in all_transactions:
+        d = tx["date"]
+        if d not in tx_by_date:
+            tx_by_date[d] = []
+        tx_by_date[d].append(tx)
+
     daily_values = []
     current_date = start_date
+    running_shares = {sym: Decimal("0") for sym in symbols}
 
     while current_date <= end_date:
-        day_transactions = portfolio.transactions.filter(date__lte=current_date)
-
-        buys = (
-            day_transactions.filter(transaction_type__in=["BUY", "DRIP"])
-            .values("symbol")
-            .annotate(
-                total_shares=Sum("quantity"), total_cost=Sum(F("quantity") * F("price"))
-            )
-        )
-
-        sells = (
-            day_transactions.filter(transaction_type="SELL")
-            .values("symbol")
-            .annotate(total_shares=Sum("quantity"))
-        )
-
-        sells_by_symbol = {s["symbol"]: s["total_shares"] for s in sells}
+        date_str = current_date.isoformat()
+        if date_str in tx_by_date:
+            for tx in tx_by_date[date_str]:
+                sym = tx["symbol"]
+                if sym in running_shares:
+                    if tx["transaction_type"] in ("BUY", "DRIP"):
+                        running_shares[sym] += tx["quantity"] or Decimal("0")
+                    elif tx["transaction_type"] == "SELL":
+                        running_shares[sym] -= tx["quantity"] or Decimal("0")
 
         portfolio_value = Decimal("0")
-        for buy in buys:
-            symbol = buy["symbol"]
-            bought = buy["total_shares"] or Decimal("0")
-            sold = sells_by_symbol.get(symbol) or Decimal("0")
-            shares = bought - sold
-
+        for sym, shares in running_shares.items():
             if shares > 0:
-                price = prices.get(symbol)
+                price = prices.get(sym)
                 if price:
                     portfolio_value += price * shares
 
         daily_values.append(
             {
-                "date": current_date.isoformat(),
+                "date": date_str,
                 "value": float(portfolio_value),
             }
         )

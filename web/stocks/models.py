@@ -898,6 +898,7 @@ class Transaction(models.Model):
         indexes = [
             models.Index(fields=["portfolio", "symbol", "date"]),
             models.Index(fields=["portfolio", "date"]),
+            models.Index(fields=["portfolio", "transaction_type"]),
         ]
 
     def __str__(self):
@@ -1031,3 +1032,84 @@ class IntradayPrice(models.Model):
 
     def __str__(self):
         return f"{self.symbol} - {self.timestamp} ({self.interval})"
+
+
+# ====================================================================
+# VettaFi Index Models - Global index coverage from VettaFi Index Finder
+# ====================================================================
+
+
+class VettaFiIndex(models.Model):
+    """
+    Index metadata scraped from VettaFi Index Finder.
+    Covers 1,900+ indexes across equity benchmarks, fixed income, factor, thematic, etc.
+    """
+
+    CATEGORY_CHOICES = [
+        ("equity_benchmark", "Equity Benchmark"),
+        ("fixed_income_benchmark", "Fixed Income Benchmark"),
+        ("factor", "Factor"),
+        ("thematic", "Thematic"),
+        ("custom_equity", "Custom Equity"),
+        ("assets", "Assets"),
+        ("derivatives", "Derivatives"),
+        ("strategy", "Strategy"),
+    ]
+
+    REGION_CHOICES = [
+        ("north_america", "North America"),
+        ("emea", "EMEA"),
+        ("asia_pacific", "Asia-Pacific"),
+        ("latin_america", "Latin America"),
+        ("global", "Global"),
+        ("japan", "Japan"),
+        ("global_ex_us", "Global (ex-US)"),
+        ("developed", "Developed"),
+        ("developed_ex_us", "Developed (ex-US)"),
+        ("emerging_markets", "Emerging Markets"),
+        ("americas", "Americas"),
+        ("other", "Other"),
+    ]
+
+    # Core identification
+    ticker = models.CharField(max_length=32, unique=True, db_index=True)
+    name = models.CharField(max_length=500)
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, db_index=True)
+    sub_category = models.CharField(max_length=200, blank=True, null=True)
+    region = models.CharField(max_length=50, choices=REGION_CHOICES, blank=True, null=True)
+
+    # Document links
+    factsheet_url = models.URLField(blank=True, null=True)
+    methodology_url = models.URLField(blank=True, null=True)
+
+    # Index page link
+    index_page_url = models.URLField(blank=True, null=True)
+
+    # Metadata
+    scraped_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "vettafi_index"
+        ordering = ["ticker"]
+        indexes = [
+            models.Index(fields=["category", "region"]),
+            models.Index(fields=["category", "sub_category"]),
+        ]
+
+    def __str__(self):
+        return f"{self.ticker} - {self.name}"
+
+    @property
+    def factsheet_pdf_url(self):
+        """Construct direct PDF URL for factsheet."""
+        if self.factsheet_url:
+            return self.factsheet_url
+        return f"https://vettafi-docs.b-cdn.net/Factsheets/{self.ticker}%20Factsheet.pdf"
+
+    @property
+    def methodology_pdf_url(self):
+        """Construct direct PDF URL for methodology."""
+        if self.methodology_url:
+            return self.methodology_url
+        return None

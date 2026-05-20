@@ -16,6 +16,7 @@ from .models import (
     PortfolioCashSummary,
     HistoricalPrice,
     IntradayPrice,
+    VettaFiIndex,
 )
 
 
@@ -207,8 +208,8 @@ class ETFPerformanceSerializer(serializers.Serializer):
 
 
 class PortfolioSerializer(serializers.ModelSerializer):
-    holdings_count = serializers.SerializerMethodField()
-    total_invested = serializers.SerializerMethodField()
+    holdings_count = serializers.IntegerField(read_only=True)
+    total_invested = serializers.FloatField(read_only=True)
 
     class Meta:
         model = Portfolio
@@ -223,25 +224,6 @@ class PortfolioSerializer(serializers.ModelSerializer):
             "holdings_count",
             "total_invested",
         ]
-
-    def get_holdings_count(self, obj):
-        from django.db.models import Sum
-
-        result = (
-            obj.transactions.filter(transaction_type__in=["BUY", "DRIP"])
-            .values("symbol")
-            .annotate(total_shares=Sum("quantity"))
-            .filter(total_shares__gt=0)
-        )
-        return len(list(result))
-
-    def get_total_invested(self, obj):
-        from django.db.models import Sum, Q
-
-        result = obj.transactions.filter(
-            Q(transaction_type="BUY") | Q(transaction_type="DRIP")
-        ).aggregate(total=Sum("amount"))
-        return float(result["total"] or 0)
 
 
 class TransactionSerializer(serializers.ModelSerializer):
@@ -392,4 +374,29 @@ class IntradayPriceSerializer(serializers.ModelSerializer):
             "volume",
             "interval",
             "fetched_at",
+        ]
+
+
+class VettaFiIndexSerializer(serializers.ModelSerializer):
+    category_display = serializers.CharField(source="get_category_display", read_only=True)
+    region_display = serializers.CharField(source="get_region_display", read_only=True)
+
+    class Meta:
+        model = VettaFiIndex
+        fields = [
+            "id",
+            "ticker",
+            "name",
+            "category",
+            "category_display",
+            "sub_category",
+            "region",
+            "region_display",
+            "factsheet_url",
+            "methodology_url",
+            "index_page_url",
+            "factsheet_pdf_url",
+            "methodology_pdf_url",
+            "scraped_at",
+            "updated_at",
         ]

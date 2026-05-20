@@ -4,7 +4,7 @@ All list endpoints support pagination (PAGE_SIZE=50), search, and ordering.
 """
 
 from django.core.cache import cache
-from django.db.models import Count, Prefetch
+from django.db.models import Count, Prefetch, Subquery, OuterRef, Max
 from rest_framework import generics, filters, status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -23,6 +23,7 @@ from .models import (
     Transaction,
     PortfolioHolding,
     PortfolioCashSummary,
+    VettaFiIndex,
 )
 from .serializers import (
     StockSerializer,
@@ -40,6 +41,7 @@ from .serializers import (
     ParseResultSerializer,
     HoldingSerializer,
     PerformanceSerializer,
+    VettaFiIndexSerializer,
 )
 from .etf_utils import calculate_investment_performance, get_popular_canadian_etfs
 from .etf_holdings_utils import fetch_and_store_etf
@@ -96,6 +98,7 @@ class ListingListView(generics.ListAPIView):
             "active",
             "status_date",
             "scraped_at",
+            "listing_url",
         )
         exchange = self.request.query_params.get("exchange")
         asset_type = self.request.query_params.get("asset_type")
@@ -139,8 +142,13 @@ def asset_type_summary(request):
             .annotate(count=Count("id"))
             .order_by("exchange", "-count")
         )
-        cache.set(cache_key, data, timeout=600)  # 10 minutes
+        cache.set(cache_key, data, timeout=600)
     return Response(data)
+
+
+def invalidate_asset_type_summary_cache():
+    """Invalidate the asset type summary cache. Call after scraping completes."""
+    cache.delete("api:asset_type_summary")
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +173,9 @@ class ETFDetailView(generics.RetrieveAPIView):
     def get_object(self):
         symbol = self.kwargs["symbol"].upper()
         cache_key = f"api:etf_detail:{symbol}"
-        # Cache the queryset result, not the serialized data, so we can still serialize fresh
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
         qs = ETFInfo.objects.filter(symbol=symbol).prefetch_related(
             Prefetch(
                 "holdings",
@@ -181,6 +191,7 @@ class ETFDetailView(generics.RetrieveAPIView):
             from rest_framework.exceptions import NotFound
 
             raise NotFound(f"ETF {symbol} not found.")
+        cache.set(cache_key, obj, timeout=3600)
         return obj
 
 
@@ -295,20 +306,10 @@ class EnrichedTickerListView(generics.ListAPIView):
             qs = qs.filter(sector__icontains=sector)
         if country:
             qs = qs.filter(country__icontains=country)
-        # Only return latest version per symbol
-        from django.db.models import Max
-
-        latest_versions = EnrichedTickerData.objects.values("symbol").annotate(
-            max_version=Max("version")
-        )
-        version_map = {row["symbol"]: row["max_version"] for row in latest_versions}
-        # Filter to only latest versions
-        from django.db.models import Q
-
-        q = Q()
-        for sym, ver in version_map.items():
-            q |= Q(symbol=sym, version=ver)
-        return qs.filter(q) if version_map else qs.none()
+        latest_version = EnrichedTickerData.objects.filter(
+            symbol=OuterRef("symbol")
+        ).order_by("-version").values("version")[:1]
+        return qs.filter(version=Subquery(latest_version))
 
 
 @api_view(["GET"])
@@ -327,9 +328,27 @@ def enriched_ticker_detail(request, symbol):
 
 class PortfolioListView(generics.ListCreateAPIView):
     serializer_class = PortfolioSerializer
-    queryset = Portfolio.objects.all()
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "account_type", "account_number"]
+
+    def get_queryset(self):
+        from django.db.models import Count, Sum, Q
+
+        return Portfolio.objects.all().annotate(
+            holdings_count=Count(
+                "transactions",
+                filter=Q(
+                    transactions__transaction_type__in=["BUY", "DRIP"]
+                ),
+                distinct=True,
+            ),
+            total_invested=Sum(
+                "transactions__amount",
+                filter=Q(
+                    transactions__transaction_type__in=["BUY", "DRIP"]
+                ),
+            ),
+        )
 
 
 class PortfolioDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -846,3 +865,59 @@ def historical_prices(request, symbol):
     )
 
     return Response(prices)
+
+
+# ---------------------------------------------------------------------------
+# VettaFi Indexes
+# ---------------------------------------------------------------------------
+
+
+class VettaFiIndexListView(generics.ListAPIView):
+    serializer_class = VettaFiIndexSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["ticker", "name", "sub_category"]
+    ordering_fields = ["ticker", "name", "category", "region"]
+    ordering = ["ticker"]
+
+    def get_queryset(self):
+        qs = VettaFiIndex.objects.all()
+        category = self.request.query_params.get("category")
+        region = self.request.query_params.get("region")
+        if category:
+            qs = qs.filter(category=category.lower())
+        if region:
+            qs = qs.filter(region=region.lower())
+        return qs
+
+
+class VettaFiIndexDetailView(generics.RetrieveAPIView):
+    serializer_class = VettaFiIndexSerializer
+    lookup_field = "ticker"
+    lookup_url_kwarg = "ticker"
+    queryset = VettaFiIndex.objects.all()
+
+
+@api_view(["GET"])
+def vettafi_index_categories(request):
+    """Return available VettaFi index categories with counts."""
+    from django.db.models import Count
+
+    data = list(
+        VettaFiIndex.objects.values("category")
+        .annotate(count=Count("id"))
+        .order_by("category")
+    )
+    return Response(data)
+
+
+@api_view(["GET"])
+def vettafi_index_regions(request):
+    """Return available VettaFi index regions with counts."""
+    from django.db.models import Count
+
+    data = list(
+        VettaFiIndex.objects.values("region")
+        .annotate(count=Count("id"))
+        .order_by("region")
+    )
+    return Response(data)

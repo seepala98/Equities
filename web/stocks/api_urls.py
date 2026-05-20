@@ -115,4 +115,25 @@ urlpatterns = [
         api_views.historical_prices,
         name="api-historical-prices",
     ),
+    # VettaFi Indexes
+    path(
+        "vettafi/",
+        api_views.VettaFiIndexListView.as_view(),
+        name="api-vettafi-list",
+    ),
+    path(
+        "vettafi/categories/",
+        api_views.vettafi_index_categories,
+        name="api-vettafi-categories",
+    ),
+    path(
+        "vettafi/regions/",
+        api_views.vettafi_index_regions,
+        name="api-vettafi-regions",
+    ),
+    path(
+        "vettafi/<str:ticker>/",
+        api_views.VettaFiIndexDetailView.as_view(),
+        name="api-vettafi-detail",
+    ),
 ]

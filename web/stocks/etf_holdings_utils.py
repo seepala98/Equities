@@ -180,7 +180,6 @@ def store_etf_holdings_data(symbol: str, basic_info: Dict, holdings: List) -> ET
     """Store ETF information and holdings in the database."""
     
     with transaction.atomic():
-        # Create or update ETF info
         etf_info, created = ETFInfo.objects.update_or_create(
             symbol=symbol.upper(),
             defaults=basic_info
@@ -191,49 +190,51 @@ def store_etf_holdings_data(symbol: str, basic_info: Dict, holdings: List) -> ET
         else:
             logger.info(f"Updated ETF: {symbol}")
         
-        # Store holdings if available
         if holdings:
-            # Delete existing holdings for today (in case of re-runs)
             today = date.today()
             ETFHolding.objects.filter(etf=etf_info, as_of_date=today).delete()
             
-            holdings_created = 0
+            sector_cache = {}
+            region_cache = {}
+            
+            holdings_to_create = []
             for holding in holdings:
-                # Try to find the stock in our listings
                 stock_listing = None
                 
-                # First try exact match
                 stock_listing = Listing.objects.filter(symbol=holding['symbol']).first()
                 
-                # If not found, try to create a basic listing entry
                 if not stock_listing and holding['symbol']:
                     try:
-                        stock_listing = Listing.objects.create(
-                            exchange='OTHER',  # We'll need to determine exchange later
+                        stock_listing = Listing(
+                            exchange='OTHER',
                             symbol=holding['symbol'],
                             name=holding['name'] or f"Stock {holding['symbol']}",
                             status='listed',
                             active=True
                         )
+                        stock_listing.save()
                         logger.info(f"Created new stock listing: {holding['symbol']}")
                     except Exception as e:
                         logger.warning(f"Could not create listing for {holding['symbol']}: {e}")
                         continue
                 
-                # Create holding record
                 if stock_listing:
-                    ETFHolding.objects.create(
-                        etf=etf_info,
-                        stock_listing=stock_listing,
-                        weight_percentage=Decimal(str(holding['weight'])),
-                        shares_held=holding.get('shares'),
-                        market_value=holding.get('market_value'),
-                        as_of_date=today,
-                        data_source='yfinance'
+                    holdings_to_create.append(
+                        ETFHolding(
+                            etf=etf_info,
+                            stock_listing=stock_listing,
+                            weight_percentage=Decimal(str(holding['weight'])),
+                            shares_held=holding.get('shares'),
+                            market_value=holding.get('market_value'),
+                            as_of_date=today,
+                            data_source='yfinance'
+                        )
                     )
-                    holdings_created += 1
             
-            logger.info(f"Stored {holdings_created} holdings for {symbol}")
+            if holdings_to_create:
+                ETFHolding.objects.bulk_create(holdings_to_create, ignore_conflicts=True)
+            
+            logger.info(f"Stored {len(holdings_to_create)} holdings for {symbol}")
         
         return etf_info
 

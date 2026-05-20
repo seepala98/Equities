@@ -248,8 +248,7 @@ class AssetClassifier:
             # If asset_type field doesn't exist yet
             return {}
 
-    def classify_all_listings(self, use_api: bool = False, limit: int = None) -> Dict:
-        """Classify all listings in the database."""
+    def classify_all_listings(self, use_api: bool = False, limit: int = None, batch_size: int = 500) -> Dict:
         
         queryset = Listing.objects.all()
         if limit:
@@ -261,15 +260,15 @@ class AssetClassifier:
             'errors': []
         }
         
+        listings_to_update = []
+        
         for listing in queryset:
             try:
                 asset_type = self.classify_listing(listing, use_api=use_api)
                 
-                # Update the listing with the classified asset type
                 listing.asset_type = asset_type
-                listing.save(update_fields=['asset_type'])
+                listings_to_update.append(listing)
                 
-                # For now, just collect stats
                 if asset_type not in results['classifications']:
                     results['classifications'][asset_type] = []
                 
@@ -281,10 +280,17 @@ class AssetClassifier:
                 
                 results['total_processed'] += 1
                 
+                if len(listings_to_update) >= batch_size:
+                    Listing.objects.bulk_update(listings_to_update, ['asset_type'])
+                    listings_to_update = []
+                
             except Exception as e:
                 error_msg = f"Error classifying {listing.symbol}: {e}"
                 results['errors'].append(error_msg)
                 logger.error(error_msg)
+        
+        if listings_to_update:
+            Listing.objects.bulk_update(listings_to_update, ['asset_type'])
         
         return results
 

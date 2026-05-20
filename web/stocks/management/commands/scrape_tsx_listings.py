@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 from stocks.models import Listing, DelistedListing, SuspendedListing
+from stocks.api_views import invalidate_asset_type_summary_cache
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
@@ -196,3 +197,6 @@ class Command(BaseCommand):
                     if sleep:
                         time.sleep(sleep)
                     continue
+
+        invalidate_asset_type_summary_cache()
+        self.stdout.write(self.style.SUCCESS('Asset type summary cache invalidated.'))

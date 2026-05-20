@@ -25,7 +25,6 @@ ChartJS.register(
 )
 
 export default function Portfolio() {
-  console.log('Portfolio component mounted')
   const [portfolios, setPortfolios] = useState([])
   const [selectedPortfolio, setSelectedPortfolio] = useState(null)
   const [holdings, setHoldings] = useState([])
@@ -35,12 +34,6 @@ export default function Portfolio() {
   const [error, setError] = useState(null)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [debug, setDebug] = useState([])
-
-  const log = (...args) => {
-    setDebug(prev => [...prev, args.join(' ')])
-    console.log(...args)
-  }
 
   useEffect(() => {
     const loadPortfolios = async () => {
@@ -49,10 +42,8 @@ export default function Portfolio() {
         const res = await portfolio.list()
         const data = res.data.results !== undefined ? res.data.results : res.data
         setPortfolios(data)
-        log('Loaded portfolios:', data.length)
       } catch (err) {
         setError(err.response?.data?.error || 'Failed to load portfolios')
-        log('Error loading portfolios:', err.message)
       } finally {
         setLoading(false)
       }
@@ -77,7 +68,6 @@ export default function Portfolio() {
         ])
         const holdingsData = holdingsRes.data.results !== undefined ? holdingsRes.data.results : holdingsRes.data
         setHoldings(holdingsData)
-        log('Loaded holdings:', holdingsData.length)
 
         if (dateRangeRes.data?.min_date && dateRangeRes.data?.max_date) {
           setStartDate(dateRangeRes.data.min_date)
@@ -85,7 +75,6 @@ export default function Portfolio() {
         }
       } catch (err) {
         setError(err.response?.data?.error || 'Failed to load portfolio data')
-        log('Error loading holdings:', err.message)
       } finally {
         setLoading(false)
       }
@@ -106,10 +95,8 @@ export default function Portfolio() {
         ])
         setPerformance(perfRes.data)
         setHeatmapData(heatmapRes.data)
-        log('Performance loaded:', perfRes.data.total_invested, perfRes.data.total_current_value)
       } catch (err) {
         setError(err.response?.data?.error || 'Failed to load performance')
-        log('Error loading performance:', err.message)
       }
     }
     loadPerformance()
@@ -165,30 +152,6 @@ export default function Portfolio() {
 
   return (
     <div className="max-w-7xl mx-auto p-6">
-      <div style={{
-        backgroundColor: '#fffbeb',
-        border: '1px solid #fbbf24',
-        borderRadius: '0.5rem',
-        padding: '0.75rem',
-        marginBottom: '1rem',
-        fontSize: '0.875rem',
-        fontFamily: 'monospace'
-      }}>
-        <div style={{ fontWeight: 'bold' }}>Debug State:</div>
-        <div>loading: {String(loading)}</div>
-        <div>portfolios count: {portfolios.length}</div>
-        <div>selectedPortfolio: {selectedPortfolio || 'none'}</div>
-        <div>startDate: '{startDate}'</div>
-        <div>endDate: '{endDate}'</div>
-        <div>error: {error || 'none'}</div>
-        <div style={{ marginTop: '0.5rem', fontSize: '0.75rem' }}>
-          <div style={{ fontWeight: 'bold' }}>Log:</div>
-          {debug.slice(-5).map((d, i) => (
-            <div key={i} style={{ whiteSpace: 'pre-wrap' }}>{d}</div>
-          ))}
-        </div>
-      </div>
-
       {loading && (!Array.isArray(portfolios) || !portfolios.length) && (
         <div className="flex items-center justify-center h-64">
           <div className="text-gray-500">Loading...</div>

@@ -57,6 +57,30 @@ def load_intraday_15m(**context):
     return {"status": "success", "total_records": total_records}
 
 
+def cleanup_old_intraday_data(**context):
+    """Delete intraday data older than 7 days to prevent unbounded growth."""
+    import sys
+
+    sys.path.insert(0, "/app")
+    import os
+
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "project.settings")
+
+    import django
+
+    django.setup()
+
+    from datetime import timedelta
+    from django.utils import timezone
+    from stocks.models import IntradayPrice
+
+    seven_days_ago = timezone.now() - timedelta(days=7)
+    deleted, _ = IntradayPrice.objects.filter(timestamp__lt=seven_days_ago).delete()
+    print(f"Cleaned up {deleted} intraday records older than 7 days")
+
+    return {"deleted_count": deleted}
+
+
 with DAG(
     dag_id="intraday_price_loader",
     description="Load intraday 15-min price data for portfolio symbols",
@@ -71,4 +95,9 @@ with DAG(
         python_callable=load_intraday_15m,
     )
 
-    load_intraday
+    cleanup_old = PythonOperator(
+        task_id="cleanup_old_intraday_data",
+        python_callable=cleanup_old_intraday_data,
+    )
+
+    load_intraday >> cleanup_old

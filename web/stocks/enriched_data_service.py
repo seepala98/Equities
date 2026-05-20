@@ -62,113 +62,53 @@ class EnrichedDataService:
         return api_data
     
     def get_tickers_by_asset_type(self, asset_type: str, limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        Get tickers filtered by asset type.
-        
-        Args:
-            asset_type: Asset type filter ('STOCK', 'ETF', etc.)
-            limit: Maximum number of results
-            
-        Returns:
-            List of ticker information dictionaries
-        """
         logger.info(f"🔍 Searching database for {asset_type} assets (limit: {limit})")
         
-        # Get latest version of each ticker with the specified asset type
-        tickers = EnrichedTickerData.objects.filter(
+        latest_tickers = EnrichedTickerData.objects.filter(
             asset_type=asset_type
-        ).values('symbol').distinct()[:limit]
+        ).order_by('symbol', '-version').distinct('symbol')[:limit]
         
-        results = []
-        for ticker_data in tickers:
-            latest_data = EnrichedTickerData.get_latest_version(ticker_data['symbol'])
-            if latest_data:
-                results.append(self._convert_to_api_format(latest_data))
+        results = [self._convert_to_api_format(t) for t in latest_tickers]
         
         logger.info(f"📊 Found {len(results)} {asset_type} assets in database")
         return results
     
     def get_tickers_by_sector(self, sector: str, limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        Get tickers filtered by sector.
-        
-        Args:
-            sector: Sector name (e.g., 'Technology', 'Healthcare')
-            limit: Maximum number of results
-            
-        Returns:
-            List of ticker information dictionaries
-        """
         logger.info(f"🔍 Searching database for {sector} sector tickers (limit: {limit})")
         
-        # Search for tickers in the specified sector
-        tickers = EnrichedTickerData.objects.filter(
+        latest_tickers = EnrichedTickerData.objects.filter(
             Q(sector__icontains=sector) | Q(sector_key__icontains=sector.lower())
-        ).values('symbol').distinct()[:limit]
+        ).order_by('symbol', '-version').distinct('symbol')[:limit]
         
-        results = []
-        for ticker_data in tickers:
-            latest_data = EnrichedTickerData.get_latest_version(ticker_data['symbol'])
-            if latest_data:
-                results.append(self._convert_to_api_format(latest_data))
+        results = [self._convert_to_api_format(t) for t in latest_tickers]
         
         logger.info(f"📊 Found {len(results)} {sector} sector tickers in database")
         return results
     
     def get_tickers_by_region(self, region: str, limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        Get tickers filtered by geographic region.
-        
-        Args:
-            region: Region name (e.g., 'North America', 'Europe')
-            limit: Maximum number of results
-            
-        Returns:
-            List of ticker information dictionaries
-        """
         logger.info(f"🌍 Searching database for {region} region tickers (limit: {limit})")
         
-        tickers = EnrichedTickerData.objects.filter(
+        latest_tickers = EnrichedTickerData.objects.filter(
             Q(region__icontains=region) | Q(country__icontains=region)
-        ).values('symbol').distinct()[:limit]
+        ).order_by('symbol', '-version').distinct('symbol')[:limit]
         
-        results = []
-        for ticker_data in tickers:
-            latest_data = EnrichedTickerData.get_latest_version(ticker_data['symbol'])
-            if latest_data:
-                results.append(self._convert_to_api_format(latest_data))
+        results = [self._convert_to_api_format(t) for t in latest_tickers]
         
         logger.info(f"📊 Found {len(results)} {region} region tickers in database")
         return results
     
     def search_tickers(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """
-        Search tickers by symbol or company name.
-        
-        Args:
-            query: Search term
-            limit: Maximum number of results
-            
-        Returns:
-            List of matching ticker information
-        """
         logger.info(f"🔍 Searching database for tickers matching '{query}' (limit: {limit})")
         
         query_upper = query.upper()
         
-        # Search by symbol or company name
-        tickers = EnrichedTickerData.objects.filter(
+        latest_tickers = EnrichedTickerData.objects.filter(
             Q(symbol__icontains=query_upper) | 
             Q(company_name__icontains=query)
-        ).values('symbol').distinct()[:limit]
+        ).order_by('symbol', '-version').distinct('symbol')[:limit]
         
-        results = []
-        for ticker_data in tickers:
-            latest_data = EnrichedTickerData.get_latest_version(ticker_data['symbol'])
-            if latest_data:
-                results.append(self._convert_to_api_format(latest_data))
+        results = [self._convert_to_api_format(t) for t in latest_tickers]
         
-        # Sort by relevance (exact symbol matches first)
         results.sort(key=lambda x: (
             0 if x['symbol'].startswith(query_upper) else 1,
             x['symbol']
