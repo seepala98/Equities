@@ -1071,6 +1071,15 @@ class VettaFiIndex(models.Model):
         ("other", "Other"),
     ]
 
+    ASSET_CLASS_CHOICES = [
+        ("equity", "Equity"),
+        ("fixed_income", "Fixed Income"),
+        ("alternatives", "Alternatives"),
+        ("commodities", "Commodities"),
+        ("multi_asset", "Multi-Asset"),
+        ("other", "Other"),
+    ]
+
     # Core identification
     ticker = models.CharField(max_length=32, unique=True, db_index=True)
     name = models.CharField(max_length=500)
@@ -1085,6 +1094,38 @@ class VettaFiIndex(models.Model):
     # Index page link
     index_page_url = models.URLField(blank=True, null=True)
 
+    # ------------------------------------------------------------------
+    # Detail page fields (populated by scraping individual index pages)
+    # ------------------------------------------------------------------
+
+    # Overview
+    asset_class = models.CharField(max_length=50, choices=ASSET_CLASS_CHOICES, blank=True, null=True)
+    overview_category = models.CharField(max_length=200, blank=True, null=True)
+    family = models.CharField(max_length=200, blank=True, null=True)
+    rebalance_frequency = models.CharField(max_length=50, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+
+    # Ticker variants
+    price_return_ticker = models.CharField(max_length=32, blank=True, null=True)
+    total_return_ticker = models.CharField(max_length=32, blank=True, null=True)
+    net_total_return_ticker = models.CharField(max_length=32, blank=True, null=True)
+
+    # Characteristics
+    num_constituents = models.IntegerField(blank=True, null=True)
+    market_capitalization = models.BigIntegerField(blank=True, null=True, help_text="Market cap in USD")
+    adjusted_market_cap = models.BigIntegerField(blank=True, null=True, help_text="Adjusted market cap in USD")
+    dividend_yield = models.DecimalField(max_digits=10, decimal_places=6, blank=True, null=True)
+
+    # Raw JSON data
+    constituents_json = models.JSONField(blank=True, null=True, help_text="Top constituents: ticker, name, ISIN, weight")
+    constituents_as_of_date = models.DateField(blank=True, null=True)
+    characteristics_json = models.JSONField(blank=True, null=True, help_text="Raw characteristics key-value pairs")
+    linked_products_json = models.JSONField(blank=True, null=True, help_text="Linked ETF products")
+
+    # Detail scrape tracking
+    detail_scraped_at = models.DateTimeField(blank=True, null=True)
+    detail_scrape_success = models.BooleanField(default=False)
+
     # Metadata
     scraped_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -1095,6 +1136,8 @@ class VettaFiIndex(models.Model):
         indexes = [
             models.Index(fields=["category", "region"]),
             models.Index(fields=["category", "sub_category"]),
+            models.Index(fields=["asset_class"]),
+            models.Index(fields=["detail_scrape_success"]),
         ]
 
     def __str__(self):
@@ -1113,3 +1156,8 @@ class VettaFiIndex(models.Model):
         if self.methodology_url:
             return self.methodology_url
         return None
+
+    @property
+    def has_detail_data(self):
+        """Check if detail page data has been scraped."""
+        return self.detail_scrape_success and self.detail_scraped_at is not None
