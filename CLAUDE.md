@@ -115,6 +115,8 @@ Grafana (:3001)    ──reads──►  Prometheus
 - `ETFSectorAllocation` / `ETFGeographicAllocation` — Aggregated allocation tables
 - `YFinanceSectorCache` / `YFinanceStockSectorCache` — 24hr/7-day caches
 - `EnrichedTickerData` — Versioned comprehensive ticker data with hash-based change detection
+- `Portfolio` / `Transaction` / `PortfolioHolding` / `PortfolioCashSummary` — TFSA/FHSA portfolio tracking
+- `HistoricalPrice` / `IntradayPrice` — Daily and 15-min OHLCV price data
 
 **`web/stocks/serializers.py`** — DRF serializers for all models including read-only computed fields (`aum_formatted`, `mer_formatted`, `weight_formatted`).
 
@@ -152,6 +154,7 @@ In development, Vite proxies `/api` to `http://web:8000` (configured in `vite.co
 | `YFinanceSectorCache` | PostgreSQL | 24 hours | `is_cache_fresh` property |
 | `YFinanceStockSectorCache` | PostgreSQL | 7 days | `is_cache_fresh` property |
 | `EnrichedTickerData` | PostgreSQL | Versioned | SHA-256 hash change detection |
+| `HistoricalPrice` / `IntradayPrice` | PostgreSQL | Rolling | Managed by Airflow DAGs |
 
 Redis gracefully degrades (`IGNORE_EXCEPTIONS: True`) — if Redis is down the app still works without caching.
 
