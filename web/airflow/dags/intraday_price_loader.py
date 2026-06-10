@@ -1,5 +1,5 @@
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 
@@ -85,7 +85,7 @@ with DAG(
     dag_id="intraday_price_loader",
     description="Load intraday 15-min price data for portfolio symbols",
     default_args=DEFAULT_ARGS,
-    schedule_interval="*/30 14-21 * * 1-5",
+    schedule="*/30 14-21 * * 1-5",
     start_date=datetime(2026, 4, 5),
     catchup=False,
     tags=["price_data", "intraday"],

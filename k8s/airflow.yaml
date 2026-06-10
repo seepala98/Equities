@@ -22,13 +22,20 @@ metadata:
   namespace: equities
 data:
   AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
-  AIRFLOW__CORE__DAGS_FOLDER: "/opt/airflow/user_dags"
+  AIRFLOW__CORE__DAGS_FOLDER: "/opt/airflow/dags"
   AIRFLOW__CORE__LOAD_EXAMPLES: "false"
   AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: "false"
+  AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+  AIRFLOW__CORE__HOSTNAME_CALLABLE: "airflow.utils.net.get_host_ip_address"
+  AIRFLOW__LOGGING__WORKER_LOG_SERVER_HOST: "airflow-scheduler"
+  AIRFLOW__API__BASE_URL: "http://airflow-webserver:8080"
+  AIRFLOW__API__AUTH_MANAGER: "airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager"
+  AIRFLOW__SCHEDULER__RUN_DAG_PROCESSOR: "true"
   AIRFLOW__LOGGING__LOGGING_LEVEL: "INFO"
   AIRFLOW__LOGGING__FAB_LOGGING_LEVEL: "WARNING"
-  # Airflow 3: standalone dag processor is enabled automatically with LocalExecutor
-  AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR: "true"
+  PYTHONPATH: "/opt/airflow"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
 ---
 # ── Airflow DB init Job ───────────────────────────────────────────────────────
 # Runs once on deploy to migrate the Airflow metadata DB and create admin user.
@@ -53,26 +60,11 @@ spec:
           args:
             - |
               airflow db migrate
-              airflow connections create-default-connections || true
-              airflow users create \
-                  --username admin \
-                  --firstname Admin \
-                  --lastname User \
-                  --role Admin \
-                  --email admin@equities.local \
-                  --password "${AIRFLOW_ADMIN_PASSWORD}" || true
               echo "Airflow DB init complete."
           envFrom:
             - configMapRef:
                 name: airflow-config
           env:
-            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
-              value: "postgresql+psycopg2://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
-            - name: AIRFLOW__WEBSERVER__SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: equities-secrets
-                  key: AIRFLOW_SECRET_KEY
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
@@ -93,6 +85,13 @@ spec:
                 secretKeyRef:
                   name: equities-secrets
                   key: AIRFLOW_ADMIN_PASSWORD
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
+            - name: AIRFLOW__API_AUTH__JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: AIRFLOW_SECRET_KEY
           resources:
             requests:
               memory: "512Mi"
@@ -122,21 +121,14 @@ spec:
       containers:
         - name: webserver
           image: equities/airflow:latest
-          imagePullPolicy: IfNotPresent
-          command: ["airflow", "webserver"]
+          imagePullPolicy: Always
+          command: ["airflow", "api-server"]
           ports:
             - containerPort: 8080
           envFrom:
             - configMapRef:
                 name: airflow-config
           env:
-            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
-              value: "postgresql+psycopg2://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
-            - name: AIRFLOW__WEBSERVER__SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: equities-secrets
-                  key: AIRFLOW_SECRET_KEY
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
@@ -152,39 +144,38 @@ spec:
                 secretKeyRef:
                   name: equities-secrets
                   key: POSTGRES_DB
-          volumeMounts:
-            - name: dags
-              mountPath: /opt/airflow/user_dags
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
+            - name: AIRFLOW__API_AUTH__JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: AIRFLOW_SECRET_KEY
           readinessProbe:
             httpGet:
-              path: /health
+              path: /api/v2/monitor/health
               port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 6
+            initialDelaySeconds: 120
+            periodSeconds: 15
+            failureThreshold: 15
           livenessProbe:
             httpGet:
-              path: /health
+              path: /api/v2/monitor/health
               port: 8080
-            initialDelaySeconds: 60
-            periodSeconds: 20
-            failureThreshold: 5
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            failureThreshold: 10
           resources:
             requests:
-              memory: "1Gi"
+              memory: "2Gi"
               cpu: "500m"
             limits:
-              memory: "2Gi"
-              cpu: "1000m"
-      volumes:
-        - name: dags
-          persistentVolumeClaim:
-            claimName: airflow-dags-pvc
+              memory: "4Gi"
+              cpu: "2000m"
       restartPolicy: Always
 ---
 # ── Airflow Scheduler Deployment ──────────────────────────────────────────────
 # In Airflow 3, the scheduler runs the DAG processor internally when
-# AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR=true. No separate dag-processor
 # pod is needed with LocalExecutor.
 apiVersion: apps/v1
 kind: Deployment
@@ -206,19 +197,16 @@ spec:
       containers:
         - name: scheduler
           image: equities/airflow:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command: ["airflow", "scheduler"]
+          ports:
+            - containerPort: 8793
+              name: log-server
+              protocol: TCP
           envFrom:
             - configMapRef:
                 name: airflow-config
           env:
-            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
-              value: "postgresql+psycopg2://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
-            - name: AIRFLOW__WEBSERVER__SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: equities-secrets
-                  key: AIRFLOW_SECRET_KEY
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
@@ -234,9 +222,13 @@ spec:
                 secretKeyRef:
                   name: equities-secrets
                   key: POSTGRES_DB
-          volumeMounts:
-            - name: dags
-              mountPath: /opt/airflow/user_dags
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
+            - name: AIRFLOW__API_AUTH__JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: AIRFLOW_SECRET_KEY
           livenessProbe:
             exec:
               command:
@@ -246,8 +238,9 @@ spec:
                 - --job-type
                 - SchedulerJob
                 - --local
-            initialDelaySeconds: 30
+            initialDelaySeconds: 60
             periodSeconds: 30
+            timeoutSeconds: 30
             failureThreshold: 5
           resources:
             requests:
@@ -256,10 +249,43 @@ spec:
             limits:
               memory: "2Gi"
               cpu: "2000m"
-      volumes:
-        - name: dags
-          persistentVolumeClaim:
-            claimName: airflow-dags-pvc
+        - name: dag-processor
+          image: equities/airflow:latest
+          imagePullPolicy: Always
+          command: ["airflow", "dag-processor"]
+          envFrom:
+            - configMapRef:
+                name: airflow-config
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: POSTGRES_DB
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
+            - name: AIRFLOW__API_AUTH__JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: equities-secrets
+                  key: AIRFLOW_SECRET_KEY
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
       restartPolicy: Always
 ---
 # ── Airflow Webserver Service ──────────────────────────────────────────────────
@@ -276,3 +302,18 @@ spec:
     - name: http
       port: 8080
       targetPort: 8080
+---
+# ── Airflow Scheduler Service (for log server on port 8793) ────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-scheduler
+  namespace: equities
+spec:
+  selector:
+    app: airflow-scheduler
+  type: ClusterIP
+  ports:
+    - name: log-server
+      port: 8793
+      targetPort: 8793

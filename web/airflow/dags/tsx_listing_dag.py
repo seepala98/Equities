@@ -1,5 +1,5 @@
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 from datetime import datetime, timedelta
 import re
@@ -64,11 +64,10 @@ with DAG(
     dag_id='tsx_listing_scraper',
     default_args=DEFAULT_ARGS,
     description='Run scraper image to fetch TSX/TSXV listings (parallel per-letter)',
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2025, 1, 1),
     catchup=False,
     max_active_tasks=10,
-    concurrency=12,
 ) as dag:
 
     # Create TaskGroups — one per exchange — containing per-letter DockerOperator tasks
@@ -114,7 +113,6 @@ with DAG(
                         python_callable=lambda e=exch, s=status: _call_scraper_by_path(e, None, s),
                         retries=2,
                         retry_delay=timedelta(minutes=5),
-                        provide_context=True,
                     )
                 else:
                     # listed: keep per-letter parallel tasks
@@ -126,7 +124,6 @@ with DAG(
                             python_callable=lambda e=exch, l=letter, s=status: _call_scraper_by_path(e, l, s),
                             retries=2,
                             retry_delay=timedelta(minutes=5),
-                            provide_context=True,
                         )
 
         groups.append(tg)
@@ -161,7 +158,6 @@ with DAG(
             python_callable=_call_cboe,
             retries=2,
             retry_delay=timedelta(minutes=5),
-            provide_context=True,
         )
 
     groups.append(cboe_tg)
@@ -183,7 +179,6 @@ with DAG(
             python_callable=_call_cse,
             retries=3,
             retry_delay=timedelta(minutes=2),
-            provide_context=True,
         )
 
     groups.append(cse_tg)
@@ -191,7 +186,6 @@ with DAG(
     summarize = PythonOperator(
         task_id='summarize_results',
         python_callable=_summarize,
-        provide_context=True,
     )
 
     # Run all groups in parallel then summarize

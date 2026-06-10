@@ -1,4 +1,4 @@
-FROM apache/airflow:3.0.0-python3.11
+FROM apache/airflow:3.2.1-python3.11
 
 USER root
 
@@ -44,6 +44,7 @@ RUN pip install --no-cache-dir \
     'apache-airflow-providers-docker' \
     'apache-airflow-providers-postgres' \
     'apache-airflow-providers-redis' \
+    'apache-airflow-providers-common-sql' \
     docker
 
 # Install project requirements (includes playwright)
@@ -55,9 +56,14 @@ RUN pip install --no-cache-dir -r /tmp/requirements-airflow.txt
 RUN playwright install chromium
 
 USER root
-# Copy Airflow DAGs and scripts into the image
+# Copy Django stocks module (needed by DAGs for scraper logic and DB models)
+COPY stocks /opt/airflow/stocks
+COPY project /opt/airflow/project
+COPY manage.py /opt/airflow/manage.py
+
+# Copy Airflow DAGs into the image (scripts go outside dags folder to avoid parsing)
 COPY airflow/dags /opt/airflow/dags
-COPY airflow/scripts /opt/airflow/dags/airflow/scripts
-RUN chown -R airflow: /opt/airflow/dags
+COPY airflow/scripts /opt/airflow/scripts
+RUN chown -R airflow: /opt/airflow/dags /opt/airflow/scripts /opt/airflow/stocks /opt/airflow/project /opt/airflow/manage.py
 
 USER airflow

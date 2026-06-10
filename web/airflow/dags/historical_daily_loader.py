@@ -1,5 +1,5 @@
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 
@@ -135,7 +135,7 @@ with DAG(
     dag_id="historical_daily_loader",
     description="Load daily historical price data for portfolio symbols",
     default_args=DEFAULT_ARGS,
-    schedule_interval="0 11 * * *",
+    schedule="0 11 * * *",
     start_date=datetime(2026, 4, 5),
     catchup=False,
     tags=["price_data", "historical"],

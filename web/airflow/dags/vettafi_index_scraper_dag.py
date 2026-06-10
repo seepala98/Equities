@@ -21,15 +21,14 @@ import logging
 import sys
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.utils.dates import days_ago
+from airflow.providers.standard.operators.python import PythonOperator
 
 logger = logging.getLogger(__name__)
 
 default_args = {
     'owner': 'data-platform-team',
     'depends_on_past': False,
-    'start_date': days_ago(1),
+    'start_date': datetime(2025, 1, 1),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 2,
@@ -41,7 +40,7 @@ dag = DAG(
     'vettafi_index_scraper',
     default_args=default_args,
     description='Scrape VettaFi Index Finder for global index coverage (1,900+ indexes)',
-    schedule_interval='0 3 * * 0',
+    schedule='0 3 * * 0',
     catchup=False,
     max_active_runs=1,
     tags=['vettafi', 'indexes', 'scraper', 'weekly'],

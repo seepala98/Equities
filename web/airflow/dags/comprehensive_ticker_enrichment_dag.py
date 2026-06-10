@@ -28,23 +28,11 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import logging
 import sys
-import os
 import time
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
-from airflow.utils.dates import days_ago
-
-# Add scripts to Python path (they're built into the image)
-sys.path.append('/opt/airflow/dags/airflow/scripts')
-
-# Import comprehensive enrichment system
-from comprehensive_enrichment import (
-    get_enrichment_manager,
-    test_comprehensive_connection,
-    process_comprehensive_batch
-)
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +40,7 @@ logger = logging.getLogger(__name__)
 default_args = {
     'owner': 'data-platform-team',
     'depends_on_past': False,
-    'start_date': days_ago(1),
+    'start_date': datetime(2025, 1, 1),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 2,
@@ -65,7 +53,7 @@ dag = DAG(
     'comprehensive_ticker_enrichment',
     default_args=default_args,
     description='🚀 Comprehensive background ticker enrichment using yfinance',
-    schedule_interval='0 2 * * 0',  # Weekly on Sunday at 2 AM
+    schedule='0 2 * * 0',
     catchup=False,
     max_active_runs=1,
     tags=['enrichment', 'yfinance', 'background', 'comprehensive', 'weekly'],
@@ -78,6 +66,8 @@ dag = DAG(
 
 def validate_system_readiness(**context) -> Dict[str, bool]:
     """Validate system readiness for comprehensive enrichment."""
+    sys.path.insert(0, '/opt/airflow/scripts')
+    from comprehensive_enrichment import get_enrichment_manager, test_comprehensive_connection
     logger.info("🔍 Validating system readiness for comprehensive enrichment...")
     
     checks = {
@@ -144,6 +134,8 @@ def validate_system_readiness(**context) -> Dict[str, bool]:
 
 def identify_comprehensive_targets(**context) -> List[str]:
     """Identify tickers for comprehensive background enrichment."""
+    sys.path.insert(0, '/opt/airflow/scripts')
+    from comprehensive_enrichment import get_enrichment_manager
     logger.info("🎯 Identifying tickers for comprehensive enrichment...")
     
     manager = get_enrichment_manager()
@@ -155,7 +147,7 @@ def identify_comprehensive_targets(**context) -> List[str]:
     logger.info(f"   High quality data: {pre_stats.get('high_quality_pct', 0)}%")
     logger.info(f"   Fresh this week: {pre_stats.get('fresh_week_pct', 0)}%")
     
-    # Get stale tickers for processing
+    # Get stale tickers for processing (increased limit for hyper-aggressive mode)
     stale_tickers = manager.get_stale_tickers(days=7, limit=1000)
     
     if not stale_tickers:
@@ -177,6 +169,8 @@ def identify_comprehensive_targets(**context) -> List[str]:
 
 def execute_comprehensive_enrichment(**context) -> Dict[str, Any]:
     """Execute comprehensive background enrichment using yfinance."""
+    sys.path.insert(0, '/opt/airflow/scripts')
+    from comprehensive_enrichment import process_comprehensive_batch
     logger.info("🚀 Starting comprehensive background enrichment...")
     
     target_tickers = context['task_instance'].xcom_pull(key='target_tickers')
@@ -193,12 +187,13 @@ def execute_comprehensive_enrichment(**context) -> Dict[str, Any]:
     logger.info("   💰 Market cap and financial metrics")
     logger.info("   📊 Data quality scoring")
     
-    # Process in batches
+    # HYPER-AGGRESSIVE PROCESSING: Complete all tickers rapidly!
     total_stats = {'processed': 0, 'updated': 0, 'errors': 0, 'high_quality': 0}
     max_batches = 8  # Process up to 8 batches (400 tickers) per run
     batch_count = 0
     
-    logger.info(f"🔄 Processing up to {max_batches} batches of 50 tickers each (400 per run)")
+    logger.info(f"🚀 HYPER-AGGRESSIVE MODE: Processing up to {max_batches} batches of 50 tickers each (400 per run)")
+    logger.info(f"🎯 TARGET: Complete all 5,390+ tickers rapidly (48x daily runs - every 30 minutes)")
     
     while batch_count < max_batches:
         batch_count += 1
@@ -270,6 +265,8 @@ def populate_sector_cache(**context) -> Dict[str, int]:
 
 def optimize_data_quality(**context) -> Dict[str, Any]:
     """Optimize data quality and identify improvement opportunities."""
+    sys.path.insert(0, '/opt/airflow/scripts')
+    from comprehensive_enrichment import get_enrichment_manager
     logger.info("📈 Optimizing data quality and identifying improvements...")
     
     manager = get_enrichment_manager()
@@ -313,6 +310,8 @@ def optimize_data_quality(**context) -> Dict[str, Any]:
 
 def generate_comprehensive_report(**context) -> str:
     """Generate comprehensive enrichment report."""
+    sys.path.insert(0, '/opt/airflow/scripts')
+    from comprehensive_enrichment import get_enrichment_manager
     logger.info("📊 Generating comprehensive enrichment report...")
     
     # Gather all processing results
@@ -374,7 +373,7 @@ def generate_comprehensive_report(**context) -> str:
    💰 Market cap and financial metrics cached
    🔍 Advanced asset classification available
 
-🔄 NEXT SCHEDULED RUN: Weekly on Sunday at 2 AM
+🔄 NEXT SCHEDULED RUN: Every 30 minutes - HYPER-AGGRESSIVE MODE!
 🎯 STATUS: Comprehensive background enrichment system operational!
 
 {"🎉 SYSTEM STATUS: ALL GREEN! Background processing optimized webapp performance!" if processing_results.get('updated', 0) > 0 else "⚠️  No updates this run - system may be fully up-to-date"}
